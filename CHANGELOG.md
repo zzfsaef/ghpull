@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The issue forms in `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`
   are bilingual field by field, so a reporter can fill them in either language.
 
+### Changed
+
+- The CI matrix runs on Linux and Windows only. Three `macos-latest` jobs sat in
+  `queued` for over ten minutes while the other six finished, so the grid never
+  completed; `.github/workflows/ci.yml` records the reason and `macos-latest` can be
+  added back if a runner becomes available. The README support claim was narrowed to
+  match (the code still supports `darwin`, it is just not exercised by CI).
+
 ## [0.1.0] - 2026-10-08
 
 First release.

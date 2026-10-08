@@ -15,7 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macOS runners stayed queued forever on this repository: three
+        # `macos-latest` jobs sat in "queued" for over ten minutes while the
+        # other six finished, so the grid never completed. Linux + Windows only
+        # for now; add `macos-latest` back if a runner becomes available.
+        os: [ubuntu-latest, windows-latest]
         node-version: [18.x, 20.x, 22.x]
 
     steps:

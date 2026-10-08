@@ -23,7 +23,7 @@ A zero-dependency Node.js CLI for pulling large single files (GitHub release ass
 
 ## Requirements
 
-- **Node.js >= 18** (`engines.node` in `package.json`). Tested on Windows, macOS and Linux (`os`: `win32`, `darwin`, `linux`).
+- **Node.js >= 18** (`engines.node` in `package.json`). Runs on Windows, macOS and Linux (`os`: `win32`, `darwin`, `linux`); CI currently covers Windows and Linux only, because `macos-latest` runners stayed queued indefinitely on this repository.
 - `npm` (bundled with Node.js) if you install through npm or `npx`. The repository itself needs no installation step to run.
 - **curl is optional.** It is only used as a fallback transport when Node.js does not trust a site's TLS certificate — see [How it works](#how-it-works).
 

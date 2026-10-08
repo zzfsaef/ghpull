@@ -23,7 +23,7 @@
 
 ## 环境要求
 
-- **Node.js >= 18**（见 `package.json` 的 `engines.node`）。已在 Windows、macOS、Linux 上使用（`os`：`win32`、`darwin`、`linux`）。
+- **Node.js >= 18**（见 `package.json` 的 `engines.node`）。可在 Windows、macOS、Linux 上运行（`os`：`win32`、`darwin`、`linux`）；CI 目前只覆盖 Windows 与 Linux，因为本仓库的 `macos-latest` runner 一直排队排不出来。
 - 如果通过 npm 或 `npx` 使用，需要 `npm`（随 Node.js 一起安装）。直接从仓库运行则不需要任何安装步骤。
 - **curl 是可选的。**只有在 Node.js 不信任站点 TLS 证书时，才会作为备用传输层使用——见[工作原理](#工作原理)。
 
