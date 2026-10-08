@@ -15,10 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS runners stayed queued forever on this repository: three
-        # `macos-latest` jobs sat in "queued" for over ten minutes while the
-        # other six finished, so the grid never completed. Linux + Windows only
-        # for now; add `macos-latest` back if a runner becomes available.
+        # macOS is intentionally absent. In the first run the three
+        # `macos-latest` jobs never picked up a runner: GitHub left them queued
+        # and then cancelled them about 15 minutes later, which flips the whole
+        # run's conclusion to `failure` even though the other six jobs passed.
+        # Add `macos-latest` back if this repository gets working macOS runners.
         os: [ubuntu-latest, windows-latest]
         node-version: [18.x, 20.x, 22.x]
 

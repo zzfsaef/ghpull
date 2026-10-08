@@ -21,11 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The CI matrix runs on Linux and Windows only. Three `macos-latest` jobs sat in
-  `queued` for over ten minutes while the other six finished, so the grid never
-  completed; `.github/workflows/ci.yml` records the reason and `macos-latest` can be
-  added back if a runner becomes available. The README support claim was narrowed to
-  match (the code still supports `darwin`, it is just not exercised by CI).
+- The CI matrix runs on Linux and Windows only. In the first run the three
+  `macos-latest` jobs never picked up a runner: GitHub left them queued and then
+  cancelled them about 15 minutes later, which flips the whole run's conclusion to
+  `failure` while the other six jobs passed. `.github/workflows/ci.yml` records the
+  reason and `macos-latest` can be added back if working runners appear. The README
+  support claim was narrowed to match (the code still supports `darwin`, it is just
+  not exercised by CI).
 
 ## [0.1.0] - 2026-10-08
 
