@@ -166,6 +166,14 @@ First release.
 - `state.json` is treated as a hint rather than as fact: only a shape- and
   range-consistent state is used, and the size of each part file on disk is the
   final authority on how much of a segment is already present.
+- Probing falls back to the configured mirrors when the original URL fails. The
+  probe used to look at the original URL only, so a `--mirror` run aborted before
+  any segment connection was made whenever the origin answered `504` or its TLS
+  handshake timed out (observed on a mobile link while the mirror was healthy).
+- Each candidate source has a bounded race budget (5 seconds). A source that
+  produces nothing within that budget is recorded as unusable and dropped, and
+  the transfer starts with the remaining sources; previously the race awaited
+  every candidate, so one stuck source delayed the first byte by its own timeout.
 
 ### Security
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 import assert from "node:assert/strict";
+import http from "node:http";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 
@@ -295,6 +296,91 @@ test("切分切到正在写的分段上：产物必须与源逐字节一致（�
     assert.deepEqual(onDisk, server.body, "产物必须与源逐字节一致");
   } finally {
     await server.close();
+    await temp.cleanup();
+  }
+});
+
+/** 一个只会回固定状态码的服务：模拟「原始地址整段不可用」。 */
+async function startStatusServer(status) {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(status);
+    res.end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = /** @type {import("node:net").AddressInfo} */ (server.address());
+  return {
+    url: `http://127.0.0.1:${address.port}/file.bin`,
+    close: () => new Promise((resolve) => server.close(() => resolve(undefined))),
+  };
+}
+
+test("镜像兜底：原始地址整段 504 时，仍从镜像把文件下完", async () => {
+  // 真机跑出来的事故（热点链路，2026-10-08 基准第 3 轮）：原始 github 整段返回 504，
+  // 而镜像那一刻是好的（上一代引擎走镜像拿到 1.03 MiB/s）。旧的「只探原始地址」实现
+  // 在建立任何分段连接之前就判死整轮下载 —— `--mirror` 等于白给。
+  const bad = await startStatusServer(504);
+  const good = await startServer({ size: 384 * 1024 });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    const goodPort = Number(new URL(good.url).port);
+    const events = [];
+    const result = await new Engine(
+      options(bad.url, out, {
+        mirrors: [`http://127.0.0.1:${goodPort}/{url}`],
+        mirrorMode: "manual",
+        raceBudgetMs: 800,
+      }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+
+    assert.equal(result.bytes, good.body.length);
+    assert.equal(result.sha256, sha256Of(good.body));
+    assert.ok(
+      events.some((event) => event.type === "probe-failed"),
+      "原始地址探测失败要有记录",
+    );
+    assert.ok(
+      events.some((event) => event.type === "probe-mirror"),
+      "应回退到镜像再探一次（而不是直接抛错）",
+    );
+  } finally {
+    await bad.close();
+    await good.close();
+    await temp.cleanup();
+  }
+});
+
+test("竞速预算：一个候选卡住也不拖住启动（不再等最慢的源）", async () => {
+  // 旧实现用 Promise.all 等最慢的候选：真机上竞速臂首个字节要 12.3s、吞吐 0.53 MiB/s，
+  // 而同一条链路的单候选臂是 2.4s / 1.54 MiB/s —— 竞速反而成了净损失。
+  const fast = await startServer({ size: 384 * 1024 });
+  const stuck = await startServer({ size: 384 * 1024, stallAfterBytes: 0 });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    const stuckPort = Number(new URL(stuck.url).port);
+    const events = [];
+    const startedAt = Date.now();
+    const result = await new Engine(
+      options(fast.url, out, {
+        mirrors: [`http://127.0.0.1:${stuckPort}/{url}`],
+        mirrorMode: "manual",
+        raceBudgetMs: 700,
+      }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.sha256, sha256Of(fast.body));
+    assert.ok(elapsedMs < 3000, `不该等卡住的候选（实测 ${elapsedMs}ms）`);
+    const raceDone = events.find((event) => event.type === "race-done");
+    assert.ok(raceDone, "应发出 race-done");
+    const stalled = raceDone.results.find((entry) => entry.name.includes(String(stuckPort)));
+    assert.equal(stalled.ok, false, "预算内没数据的候选要记为不可用");
+  } finally {
+    await fast.close();
+    await stuck.close();
     await temp.cleanup();
   }
 });

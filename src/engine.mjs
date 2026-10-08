@@ -43,6 +43,19 @@ const STATE_SAVE_MS = 3000;
 /** 来源失败后的冷却时间（毫秒）。 */
 const SOURCE_COOLDOWN_MS = 30000;
 
+/**
+ * 单个候选源的竞速预算（毫秒）。
+ *
+ * 竞速的目的只是「挑一条更快的源」，不该变成新的等待点：实测在公共镜像上，
+ * 一个候选卡到自己的超时（15s）会把整个启动拖到十几秒才落第一个字节。
+ * 预算内测不到数据就按「不可用」记，让下载立刻用剩下的源开跑。
+ * 测试里用 `raceBudgetMs` 覆盖成一个很小的值。
+ */
+const RACE_BUDGET_MS = 5000;
+
+/** 探测阶段最多尝试几个来源（原始地址 + 若干镜像），避免全部不可用时挨个耗满超时。 */
+const PROBE_TARGETS_MAX = 4;
+
 /** 一个分段。 */
 class Segment {
   /**
@@ -146,13 +159,35 @@ export class Engine {
       this.expectedHash = "";
     }
 
-    // 2) 探测目标
-    const probed = await probe(this.opts.url, {
-      transport: this.opts.transport,
-      timeoutSec: this.opts.timeoutSec,
-      maxSockets: this.opts.maxConns,
-      curlPath: this.opts.curlPath,
-    });
+    // 2) 探测目标：先原始地址，失败时依次试镜像。
+    //    `--mirror` 的意义就是「原始地址不行时还有别的源」；实测在热点链路下原始地址会整段
+    //    返回 504 / SSL 超时，若只探原始地址，整轮下载在建立分段连接之前就被判死，镜像永远轮不到。
+    const probeTargets = this.#buildCandidates().slice(0, PROBE_TARGETS_MAX);
+    let probed = null;
+    /** @type {unknown} */
+    let probeError = null;
+    for (const target of probeTargets) {
+      try {
+        probed = await probe(target.url, {
+          transport: this.opts.transport,
+          timeoutSec:
+            target.name === "origin" ? this.opts.timeoutSec : Math.min(this.opts.timeoutSec, 15),
+          maxSockets: this.opts.maxConns,
+          curlPath: this.opts.curlPath,
+        });
+        if (target.name !== "origin") {
+          this.log(`原始地址探测失败，改用镜像来源：${target.url}`);
+          this.emit({ type: "probe-mirror", name: target.name, url: target.url });
+        }
+        break;
+      } catch (error) {
+        if (probeError === null) probeError = error;
+        const message = /** @type {Error} */ (error).message;
+        this.stats.recordFailure(target.url, message);
+        this.emit({ type: "probe-failed", name: target.name, url: target.url, error: message });
+      }
+    }
+    if (probed === null) throw probeError;
     this.finalUrl = probed.finalUrl;
     this.size = probed.size ?? 0;
     this.transport = probed.transport;
@@ -239,40 +274,16 @@ export class Engine {
   /**
    * 来源竞速：每个候选实抓一段（默认 256KiB）测真实速率，再按「不慢于最快源 50%」过滤。
    * 只有多个候选时才做——单源时竞速纯属浪费。
+   *
+   * 每个候选都有预算（默认 RACE_BUDGET_MS）：卡住的候选按「不可用」处理并被踢出，
+   * 绝不为它多等（旧实现用 Promise.all 等最慢的那个，等于把最慢源的超时加到启动路径上）。
    */
   async #raceSources() {
     const raceBytes = 256 * 1024;
-    this.emit({ type: "race", candidates: this.candidates.length });
+    const budgetMs = Number(this.opts.raceBudgetMs ?? RACE_BUDGET_MS);
+    this.emit({ type: "race", candidates: this.candidates.length, budgetMs });
     const measured = await Promise.all(
-      this.candidates.map(async (candidate) => {
-        const started = Date.now();
-        let bytes = 0;
-        try {
-          const stream = await openRange(candidate.url, {
-            start: 0,
-            end: raceBytes - 1,
-            transport: this.opts.transport,
-            timeoutSec: Math.min(this.opts.timeoutSec, 15),
-            maxSockets: this.opts.maxConns,
-            curlPath: this.opts.curlPath,
-          });
-          try {
-            for await (const chunk of stream.bytes) {
-              bytes += /** @type {Buffer} */ (chunk).length;
-              if (bytes >= raceBytes) break;
-            }
-          } finally {
-            stream.abort();
-          }
-        } catch (error) {
-          this.stats.recordFailure(candidate.url, /** @type {Error} */ (error).message);
-          return { ...candidate, bps: 0, ok: false };
-        }
-        const seconds = Math.max(0.05, (Date.now() - started) / 1000);
-        const bps = bytes / seconds;
-        this.stats.recordSpeed(candidate.url, bps);
-        return { ...candidate, bps, ok: true };
-      }),
+      this.candidates.map((candidate) => this.#measureCandidate(candidate, raceBytes, budgetMs)),
     );
     const usable = measured.filter((entry) => entry.ok && entry.bps > 0);
     this.emit({
@@ -284,6 +295,62 @@ export class Engine {
       usable.map((entry) => ({ name: entry.name, url: entry.url })),
       this.stats,
     );
+  }
+
+  /**
+   * 量一个候选源。预算内没拿到数据就按「不可用」记 —— 绝不为了等它把启动拖住。
+   * @param {{name: string, url: string}} candidate
+   * @param {number} raceBytes
+   * @param {number} budgetMs
+   */
+  async #measureCandidate(candidate, raceBytes, budgetMs) {
+    const started = Date.now();
+    /** @type {{bytes: AsyncIterable<Buffer>, abort: () => void}|null} */
+    let stream = null;
+    let expired = false;
+    let bytes = 0;
+    const timer = setTimeout(() => {
+      expired = true;
+      try {
+        stream?.abort();
+      } catch {
+        /* 已经结束了 */
+      }
+    }, budgetMs);
+    try {
+      stream = await openRange(candidate.url, {
+        start: 0,
+        end: raceBytes - 1,
+        transport: this.opts.transport,
+        timeoutSec: Math.min(this.opts.timeoutSec, Math.ceil(budgetMs / 1000)),
+        maxSockets: this.opts.maxConns,
+        curlPath: this.opts.curlPath,
+      });
+      for await (const chunk of stream.bytes) {
+        bytes += /** @type {Buffer} */ (chunk).length;
+        if (bytes >= raceBytes) break;
+      }
+    } catch (error) {
+      if (!expired) {
+        this.stats.recordFailure(candidate.url, /** @type {Error} */ (error).message);
+        return { ...candidate, bps: 0, ok: false };
+      }
+    } finally {
+      clearTimeout(timer);
+      try {
+        stream?.abort();
+      } catch {
+        /* 已经结束了 */
+      }
+    }
+    if (bytes === 0) {
+      this.stats.recordFailure(candidate.url, `竞速超时（${budgetMs}ms 内没有数据）`);
+      return { ...candidate, bps: 0, ok: false, timeout: true };
+    }
+    const seconds = Math.max(0.05, (Date.now() - started) / 1000);
+    const bps = bytes / seconds;
+    this.stats.recordSpeed(candidate.url, bps);
+    return { ...candidate, bps, ok: true };
   }
 
   /** 有断点就续，没有就规划。 */
