@@ -24,6 +24,20 @@ test("--no-adaptive 关掉启动闸门", () => {
   assert.equal(parseCliArgs(["https://e.com/a", "--no-adaptive"]).adaptive, false);
 });
 
+test("--min-split 不显式给就交给引擎按文件大小自适应", () => {
+  // 默认（没给）⇒ minSplitAuto 为真，引擎会用 max(1MiB, size/32) 覆盖上面的 8MiB 兜底值
+  const auto = parseCliArgs(["https://e.com/a"]);
+  assert.equal(auto.minSplitAuto, true);
+  assert.equal(auto.minSplit, 8 * 1024 * 1024, "兜底值本身不变，只是不生效时由引擎推导");
+  // 显式给了就是硬口径：命令行与配置都算显式
+  const explicit = parseCliArgs(["https://e.com/a", "--min-split", "1MiB"]);
+  assert.equal(explicit.minSplitAuto, false);
+  assert.equal(explicit.minSplit, 1024 * 1024);
+  const fromConfig = parseCliArgs(["https://e.com/a"], { minSplit: "2MiB" });
+  assert.equal(fromConfig.minSplitAuto, false);
+  assert.equal(fromConfig.minSplit, 2 * 1024 * 1024);
+});
+
 test("尺寸解析：单位与 /s 后缀", () => {
   assert.equal(parseSize("64KiB", "t"), 65536);
   assert.equal(parseSize("8M", "t"), 8 * 1024 * 1024);

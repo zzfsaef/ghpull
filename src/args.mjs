@@ -86,7 +86,8 @@ export const HELP = `ghpull — 多源分段下载器（零依赖，Node >= 18�
       --conns <n>         并发连接上限（默认 8；默认自适应，够快就只用 1 条）
       --max-conns <n>     自适应并发上限（默认 16）
       --no-adaptive       关闭自适应并发：一开始就摊开 --conns 条连接
-      --min-split <尺寸>  最小分段长度（默认 8MiB，可取 4M / 8MiB）
+      --min-split <尺寸>  最小分段长度（默认按文件大小自适应：max(1MiB, 尺寸/32)；
+                          显式给出则按给定值，可取 4M / 8MiB）
       --timeout <秒>      单次请求超时（默认 30）
       --stall-sec <秒>    超过这么久没有任何新字节就判定停滞并换源（默认 12）
       --lowest-speed <速率>  启动期后低于此速率即判为过慢（默认 1KiB/s）
@@ -163,6 +164,7 @@ const OPTION_TABLE = {
  * @property {number} conns
  * @property {number} maxConns
  * @property {number} minSplit
+ * @property {boolean} minSplitAuto 没显式给 `--min-split` 时为 true（引擎按文件大小自适应）
  * @property {number} timeoutSec
  * @property {number} stallSec
  * @property {number} lowestSpeed
@@ -221,6 +223,8 @@ export function parseCliArgs(argv, base) {
     ? cfgSize(cfg.minSplit, 8 * 1024 * 1024, "--min-split(config)")
     : parseSize(values["min-split"], "--min-split");
   if (minSplit < 64 * 1024) throw new UsageError(`--min-split 至少 64KiB，收到的是 ${values["min-split"] ?? minSplit}`);
+  // 没显式给（命令行与配置都没有）时才让引擎按文件大小自适应 —— 显式给了就是硬口径
+  const minSplitAuto = values["min-split"] === undefined && cfg.minSplit === undefined;
 
   const mirrorMode = values["mirror-mode"] ?? cfg.mirrorMode ?? "off";
   if (!["off", "manual", "auto"].includes(mirrorMode)) {
@@ -258,6 +262,7 @@ export function parseCliArgs(argv, base) {
     conns,
     maxConns,
     minSplit,
+    minSplitAuto,
     timeoutSec: values.timeout === undefined
       ? cfgCount(cfg.timeoutSec, 30, "--timeout(config)", { min: 1, max: 3600 })
       : parseCount(values.timeout, "--timeout", { min: 1, max: 3600 }),
@@ -299,6 +304,7 @@ export function withDefaults(partial) {
     conns: 8,
     maxConns: 16,
     minSplit: 8 * 1024 * 1024,
+    minSplitAuto: false,
     timeoutSec: 30,
     stallSec: 12,
     lowestSpeed: 1024,

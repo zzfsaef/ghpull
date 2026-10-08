@@ -138,7 +138,8 @@ export function createReporter(options) {
         case "plan":
           newline();
           if (options.verbose) {
-            stderr.write(`分段计划：${event.segments} 段，最小分段 ${formatBytes(event.minSplit)}\n`);
+            const how = event.minSplitAuto ? "，按文件大小自适应" : "";
+            stderr.write(`分段计划：${event.segments} 段，最小分段 ${formatBytes(event.minSplit)}${how}\n`);
           }
           break;
         case "ramp":

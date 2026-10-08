@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { withDefaults } from "../src/args.mjs";
-import { Engine } from "../src/engine.mjs";
+import { Engine, autoMinSplit } from "../src/engine.mjs";
 import { ChecksumError, DestinationExistsError } from "../src/errors.mjs";
 import { makeBody, makeTempDir, sha256Of, startServer } from "./helpers.mjs";
 
@@ -326,6 +326,57 @@ test("自适应并发：链路够快就只用 1 条连接（健康链路上并�
     const plan = events.find((event) => event.type === "plan");
     assert.equal(plan.adaptive, true);
     assert.equal(plan.initialTarget, 1, "自适应时应先只切一段，等测速结果再切");
+  } finally {
+    await server.close();
+    await temp.cleanup();
+  }
+});
+
+test("minSplit 自适应：不显式给就按文件大小推 max(1MiB, size/32)", async () => {
+  // 纯函数口径（2026-10-09 实测：64MiB 文件上把它从 8MiB 降到 1MiB，同样 45s 实收 +70%）
+  assert.equal(autoMinSplit(64 * 1024 * 1024), 2 * 1024 * 1024);
+  assert.equal(autoMinSplit(1024 * 1024 * 1024), 32 * 1024 * 1024);
+  assert.equal(autoMinSplit(4 * 1024 * 1024), 1024 * 1024, "小文件兜到 1MiB 下限");
+  assert.equal(autoMinSplit(0), 1024 * 1024);
+  assert.equal(autoMinSplit(Number.NaN), 1024 * 1024);
+
+  const size = 4 * 1024 * 1024;
+  const server = await startServer({ size, delayMs: 5 });
+  const temp = await makeTempDir();
+  try {
+    // 自适应：4MiB → minSplit 1MiB ⇒ 非自适应路径能切成 2 段
+    /** @type {any[]} */
+    const autoEvents = [];
+    const autoOut = temp.file("auto.bin");
+    const autoResult = await new Engine(
+      options(server.url, autoOut, { adaptive: false, conns: 8, maxConns: 8, minSplitAuto: true }),
+      { onEvent: (event) => autoEvents.push(event) },
+    ).run();
+    const autoPlan = autoEvents.find((event) => event.type === "plan");
+    assert.equal(autoPlan.minSplitAuto, true);
+    assert.equal(autoPlan.minSplit, 1024 * 1024, "4MiB 文件应推成 1MiB");
+    assert.equal(autoPlan.segments, 2, "推出来的 minSplit 必须真的让规划多切一段");
+    assert.equal(autoResult.sha256, sha256Of(server.body));
+
+    // 对照组：显式 8MiB（老默认）⇒ 4MiB 整份低于 2×8MiB，切不动，只有 1 段
+    /** @type {any[]} */
+    const fixedEvents = [];
+    const fixedOut = temp.file("fixed.bin");
+    const fixedResult = await new Engine(
+      options(server.url, fixedOut, {
+        adaptive: false,
+        conns: 8,
+        maxConns: 8,
+        minSplit: 8 * 1024 * 1024,
+        minSplitAuto: false,
+      }),
+      { onEvent: (event) => fixedEvents.push(event) },
+    ).run();
+    const fixedPlan = fixedEvents.find((event) => event.type === "plan");
+    assert.equal(fixedPlan.minSplitAuto, false);
+    assert.equal(fixedPlan.minSplit, 8 * 1024 * 1024, "显式给了就不许被自适应改掉");
+    assert.equal(fixedPlan.segments, 1, "显式 8MiB 时 4MiB 文件只能单段（这是老行为）");
+    assert.equal(fixedResult.sha256, sha256Of(server.body));
   } finally {
     await server.close();
     await temp.cleanup();

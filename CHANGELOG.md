@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   connections was pinned at 2.06 MiB/s (~5× slower), whereas the same 8 connections
   won by 40× when the single connection was starved at 0.02 MiB/s. `--no-adaptive`
   keeps the previous behaviour (start at `--conns`, then ±2 every 6 seconds).
+- The minimum segment size adapts to the file size when `--min-split` is not given:
+  `max(1MiB, size / 32)`. The old fixed 8 MiB default could not be reached on a
+  64 MiB file once downloads had started, because a segment is only split while
+  `remaining ≥ 2 × min-split` and `remaining` shrinks below the segment length as
+  soon as bytes arrive: the plan stalled at `4 × 16MiB`, capping real concurrency at
+  4 connections. Measured on a controllable local link (64 MiB, per-connection
+  100 KiB/s, 45 s cap): the derived 2 MiB threshold reached 8 connections and pulled
+  21.1 MiB where the fixed 8 MiB default pulled 12.4 MiB (**+70%**). An explicit
+  `--min-split` (or `minSplit` in the config file) is still honoured verbatim.
 - The CI matrix runs on Linux and Windows only. In the first run the three
   `macos-latest` jobs never picked up a runner: GitHub left them queued and then
   cancelled them about 15 minutes later, which flips the whole run's conclusion to

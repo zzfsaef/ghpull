@@ -51,6 +51,30 @@ const RAMP_IMPROVE = 1.15;
 /** 低于「历史最好档 × 这个系数」就算明显变差：这一档不如之前，或者链路自己变慢了。 */
 const RAMP_BAD = 0.85;
 
+/**
+ * 最小分段长度的**自适应**口径（只在 `--min-split` 没显式给的时候生效）。
+ *
+ * 为什么需要它（2026-10-09，本地可控链路实测）：`#largestSplittable` 要求
+ * `remaining >= 2 * minSplit`，而**分段一旦开始下载，`remaining` 就小于段长**——
+ * 默认 8 MiB 时 64 MiB 切成 4×16 MiB 之后就再也切不动，服务端峰值并发只有 4。
+ * 同一条链路、同样 45s，把最小分段降到 1 MiB 后峰值并发 8、实收 **21.1 vs 12.4 MiB（+70%）**。
+ * 所以默认按文件大小推：`max(1MiB, size/32)`——小文件也能摊开，大文件段数上限约 32 不至于过碎。
+ * 显式 `--min-split` 仍是硬口径，不会被覆盖。
+ */
+const MIN_SPLIT_FLOOR = 1024 * 1024;
+const MIN_SPLIT_DIVISOR = 32;
+
+/**
+ * 按文件大小推最小分段长度：`max(1MiB, floor(size/32))`。
+ * @param {number} size 文件总长（字节）
+ * @returns {number} 最小分段长度（字节）
+ */
+export function autoMinSplit(size) {
+  const n = Number(size);
+  if (!Number.isFinite(n) || n <= 0) return MIN_SPLIT_FLOOR;
+  return Math.max(MIN_SPLIT_FLOOR, Math.floor(n / MIN_SPLIT_DIVISOR));
+}
+
 /** 状态落盘的间隔（毫秒）。 */
 const STATE_SAVE_MS = 3000;
 
@@ -381,7 +405,7 @@ export class Engine {
 
   /** 有断点就续，没有就规划。 */
   async #loadOrPlanSegments(probed) {
-    const minSplit = this.opts.minSplit;
+    const minSplit = this.#minSplit();
     const state = this.opts.resume && !this.opts.force ? await readState(this.out) : null;
     if (state && state.size === this.size && (state.url === this.opts.url || state.url === this.finalUrl)) {
       const restored = [];
@@ -423,7 +447,25 @@ export class Engine {
       this.#split(largest);
     }
     this.reusedBytes = 0;
-    this.emit({ type: "plan", segments: this.segments.length, minSplit, initialTarget, adaptive: this.opts.adaptive === true });
+    this.emit({
+      type: "plan",
+      segments: this.segments.length,
+      minSplit,
+      minSplitAuto: this.opts.minSplitAuto === true,
+      initialTarget,
+      adaptive: this.opts.adaptive === true,
+    });
+  }
+
+  /**
+   * 本次下载实际生效的最小分段长度。
+   *
+   * 只有**没显式给 `--min-split`/配置**时才按文件大小自适应（`autoMinSplit`）；
+   * 显式给了就是硬口径，绝不悄悄改掉用户的决定。
+   * @returns {number}
+   */
+  #minSplit() {
+    return this.opts.minSplitAuto === true ? autoMinSplit(this.size) : this.opts.minSplit;
   }
 
   /** @param {number} minSplit */
@@ -550,9 +592,10 @@ export class Engine {
    */
   #maybeSplit(now) {
     void now;
+    const minSplit = this.#minSplit();
     const endgameRemaining = this.segments.reduce((sum, s) => sum + s.remaining, 0);
-    const endgame = endgameRemaining <= Math.max(2 * this.opts.minSplit, 4 * 1024 * 1024);
-    const threshold = endgame ? Math.max(256 * 1024, Math.floor(this.opts.minSplit / 8)) : this.opts.minSplit;
+    const endgame = endgameRemaining <= Math.max(2 * minSplit, 4 * 1024 * 1024);
+    const threshold = endgame ? Math.max(256 * 1024, Math.floor(minSplit / 8)) : minSplit;
     // 连接上限只由自适应目标决定；endgame 放宽的是「切多细」，不是「开几条」。
     const ceiling = this.targetConns;
     while (this.activeCount < ceiling) {
