@@ -1,5 +1,7 @@
 # ghpull
 
+[English](README.md) · **简体中文**
+
 零依赖的 Node.js 命令行工具，用于在慢速或不稳定的链路上拉取单个大文件（GitHub 发布包、ISO 镜像、压缩包）：并发 HTTP Range 分段请求、多源择优、两层续传、停滞看门狗与内建 SHA-256 校验——`npx` 直接可用，不下载任何二进制，也不依赖外部下载器。
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zzfsaef/ghpull/blob/main/LICENSE)
@@ -312,4 +314,6 @@ npx ghpull https://github.com/<owner>/<repo>/releases/download/<tag>/<file> --co
 
 [MIT](https://github.com/zzfsaef/ghpull/blob/main/LICENSE) © ghpull contributors。
 
-欢迎贡献——见 [CONTRIBUTING.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.md)。如需上报安全漏洞，请按 [SECURITY.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.md) 所述使用[私密上报](https://github.com/zzfsaef/ghpull/security/advisories/new)；请不要为安全问题开公开 issue。
+欢迎贡献——见 [CONTRIBUTING.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.zh-CN.md)（英文原文为 [CONTRIBUTING.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.md)）。如需上报安全漏洞，请按 [SECURITY.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.zh-CN.md) 所述使用[私密上报](https://github.com/zzfsaef/ghpull/security/advisories/new)；请不要为安全问题开公开 issue。
+
+面向读者的文档都提供中英两份：本文件与 [README.md](https://github.com/zzfsaef/ghpull/blob/main/README.md)、[CONTRIBUTING.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.zh-CN.md) / [CONTRIBUTING.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.md)、[SECURITY.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.zh-CN.md) / [SECURITY.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.md)，以及 [`legacy/`](https://github.com/zzfsaef/ghpull/tree/main/legacy) 下的文件。

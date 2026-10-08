@@ -1,64 +1,82 @@
-# 安全政策
+# Security Policy
 
-## 支持的版本
+**English** · [简体中文](SECURITY.zh-CN.md)
 
-只有下面列出的版本系列会收到安全修复。更早的版本不再受支持，请先升级再上报。
+## Supported versions
 
-| 版本 | 是否受支持 |
+Only the version lines listed below receive security fixes. Older versions are out of
+scope — please upgrade before reporting.
+
+| Version | Supported |
 | --- | --- |
-| 0.1.x | :white_check_mark: 受支持 |
-| < 0.1 | :x: 不受支持 |
+| 0.1.x | :white_check_mark: supported |
+| < 0.1 | :x: not supported |
 
-## 私密上报漏洞
+## Reporting a vulnerability privately
 
-**请使用 GitHub Security Advisories 私密上报：**
+**Please use GitHub Security Advisories:**
 
 <https://github.com/zzfsaef/ghpull/security/advisories/new>
 
-**请勿通过公开 issue 披露安全漏洞。**任何含有漏洞细节、PoC 或可利用信息的讨论，
-在修复版本发布前都不应出现在公开的 issue、PR、discussions 或社交媒体上。
+**Do not disclose security issues in a public issue.** Any discussion containing
+vulnerability details, a PoC, or exploit information must stay out of public issues,
+pull requests, discussions and social media until a fixed release exists.
 
-本项目不提供邮件联系方式。
+This project provides no email contact.
 
-## 上报时请尽量包含
+## What to include in a report
 
-- 受影响的版本（`ghpull --version`）与 Node.js 版本（`node --version`）；
-- 操作系统与架构；
-- 漏洞类型与影响（例如：越权写入、读到非预期内容、校验被绕过）；
-- 最小复现步骤或 PoC（可用公开 URL 或本地 HTTP 桩服务，**不要**包含私有链接与凭据）；
-- 你期望的正确行为；
-- 如果愿意，可以说明你打算如何公开这项发现。
+- the affected version (`ghpull --version`) and the Node.js version (`node --version`);
+- operating system and architecture;
+- the type of issue and its impact (for example: writing outside the intended path,
+  reading unexpected content, verification being bypassed);
+- minimal reproduction steps or a PoC (public URLs or a local HTTP stub server are
+  fine; **never** include private links or credentials);
+- the behaviour you expected instead;
+- optionally, how you intend to disclose the finding.
 
-## 本项目的安全关注范围
+## What counts as a security issue here
 
-ghpull 是一个纯客户端 CLI，不提供服务端组件。与安全最相关的部分包括（不限于此）：
+ghpull is a client-only CLI with no server component. The most security-relevant
+areas include (but are not limited to):
 
-- **输出路径处理**：清理文件名或补齐目标路径时是否可能写出用户指定目录之外（路径穿越、符号链接）；
-- **临时文件与续传状态**：续传元数据、临时分段的创建与解析是否可被外部输入操纵；
-- **URL 与响应处理**：重定向跟随、多源候选与镜像回退是否可能被恶意或被劫持的源利用；
-- **传输完整性**：SHA-256 校验与覆盖保护是否可被绕过，是否存在静默写入错误内容的路径；
-- **资源消耗**：畸形响应（异常的 Content-Length、Range 语义、永不结束的响应体）是否会导致失控的内存或磁盘占用；
-- **TLS 与代理**：是否存在任何默认关闭证书校验或忽略校验失败的路径。
+- **Output path handling**: can filename sanitising or path completion write outside
+  the directory the user asked for (path traversal, symlinks)?
+- **Temporary files and resume state**: can resume metadata or temporary part files be
+  created or parsed in a way that external input controls?
+- **URL and response handling**: can redirect following, multi-source candidates or
+  mirror fallback be exploited by a malicious or hijacked source?
+- **Transfer integrity**: can SHA-256 verification or overwrite protection be
+  bypassed, and is there any path that silently writes the wrong content?
+- **Resource consumption**: can a malformed response (odd `Content-Length`, unusual
+  Range semantics, a body that never ends) cause unbounded memory or disk usage?
+- **TLS and proxies**: is there any path that disables certificate verification by
+  default, or ignores a verification failure?
 
-一般来说，第三方下载源本身的内容好坏不属于本项目的漏洞；我们关心的是 ghpull
-在**面对**这些源时是否会被诱导做出不该做的事。
+Generally speaking, the content served by a third-party download source is not a
+vulnerability in this project; what matters to us is whether ghpull can be induced to
+do something it should not when it **faces** such a source.
 
-## 我们的响应方式
+## How we respond
 
-维护者以**尽力而为（best effort）**的方式响应安全报告：这是志愿维护的开源项目，
-**不承诺任何 SLA 或固定的响应、修复时限**。
+Maintainers respond to security reports on a **best-effort** basis: this is a
+volunteer-maintained open source project and **no SLA or fixed response or fix
+deadline is promised**.
 
-通常的流程是：
+The usual flow is:
 
-1. 确认收到报告并做初步判断；
-2. 在 GitHub Security Advisory 中与上报者沟通、复现并评估影响；
-3. 准备修复，评估是否需要发布补丁版本（`0.1.x` 系列）；
-4. 协调披露时间，在修复版本可获取后公开 advisory，并视情况致谢上报者。
+1. acknowledge the report and make an initial assessment;
+2. discuss, reproduce and assess impact with the reporter in a GitHub Security
+   Advisory;
+3. prepare the fix and decide whether a patch release (`0.1.x`) is needed;
+4. coordinate disclosure, publish the advisory once the fixed version is available,
+   and credit the reporter where appropriate.
 
-如果你在合理时间内没有收到回复，可以在**不披露漏洞细节**的前提下于仓库 issue 中
-留言请求关注（只说"我需要跟进一个安全报告的进度"，不要写出技术细节）。
+If you have not heard back within a reasonable time, you may ask for attention in a
+repository issue **without disclosing details** (say only "I need a status update on a
+security report" — never the technical details).
 
-## 致谢
+## Acknowledgements
 
-我们感谢每一个负责任地私下上报问题的研究者。除非你希望保持匿名，我们会在公开的
-advisory 中致谢。
+We thank every researcher who reports issues privately and responsibly. Unless you
+prefer to stay anonymous, we will credit you in the public advisory.

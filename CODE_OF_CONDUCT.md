@@ -1,5 +1,7 @@
 # Contributor Covenant Code of Conduct
 
+**English** · [简体中文](CODE_OF_CONDUCT.zh-CN.md)（中文说明；英文原文为准 · Chinese notes; this English text is authoritative）
+
 ## Our Pledge
 
 We as members, contributors, and leaders pledge to make participation in our

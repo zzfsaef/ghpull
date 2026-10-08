@@ -1,5 +1,5 @@
-name: Bug 报告
-description: 报告 ghpull 的行为异常、崩溃或下载结果不正确
+name: Bug 报告 / Bug report
+description: 报告 ghpull 的行为异常、崩溃或下载结果不正确 / Report a crash, misbehaviour or an incorrect download
 title: '[Bug]: '
 labels: ['bug']
 body:
@@ -9,24 +9,30 @@ body:
         感谢你花时间报告问题。请尽量把字段填完整 —— ghpull 涉及网络、并发分段与断点续传，
         缺少 **版本 / Node 版本 / 操作系统 / 完整命令** 这几项时基本无法复现。
 
-        **安全漏洞不要在这里提交**，请走
-        [GitHub Security Advisories](https://github.com/zzfsaef/ghpull/security/advisories/new) 私密上报。
+        Thanks for taking the time to report. Please fill in every field: ghpull deals with
+        networking, concurrent segments and resume, so without **version / Node version / OS /
+        full command** the issue is usually impossible to reproduce.
+
+        **安全漏洞不要在这里提交**，请走 GitHub Security Advisories 私密上报：
+        <https://github.com/zzfsaef/ghpull/security/advisories/new>
+        **Do not report security issues here** — use GitHub Security Advisories instead:
+        <https://github.com/zzfsaef/ghpull/security/advisories/new>
 
   - type: checkboxes
     id: preflight
     attributes:
-      label: 提交前确认
+      label: 提交前确认 / Preflight
       options:
-        - label: 我已搜索过现有 issue，确认这不是重复问题
+        - label: 我已搜索过现有 issue，确认这不是重复问题 / I searched existing issues and this is not a duplicate
           required: true
-        - label: 我正在使用最新发布版本，或已确认问题在默认分支上依然存在
+        - label: 我正在使用最新发布版本，或已确认问题在默认分支上依然存在 / I am on the latest release, or confirmed the problem still exists on the default branch
           required: true
 
   - type: input
     id: ghpull-version
     attributes:
-      label: ghpull 版本
-      description: 运行 `ghpull --version`（或 `npm ls -g ghpull`）得到的完整版本号
+      label: ghpull 版本 / ghpull version
+      description: '运行 `ghpull --version`（或 `npm ls -g ghpull`）得到的完整版本号 / Full version from `ghpull --version` (or `npm ls -g ghpull`)'
       placeholder: 0.1.0
     validations:
       required: true
@@ -34,8 +40,8 @@ body:
   - type: input
     id: node-version
     attributes:
-      label: Node.js 版本
-      description: 运行 `node --version` 得到的完整版本号（ghpull 要求 Node >= 18）
+      label: Node.js 版本 / Node.js version
+      description: '运行 `node --version` 得到的完整版本号（ghpull 要求 Node >= 18）/ Full version from `node --version` (ghpull requires Node >= 18)'
       placeholder: v22.14.0
     validations:
       required: true
@@ -43,22 +49,22 @@ body:
   - type: dropdown
     id: os
     attributes:
-      label: 操作系统
-      description: 出问题时使用的操作系统
+      label: 操作系统 / Operating system
+      description: 出问题时使用的操作系统 / The OS in use when the problem happened
       options:
         - Windows
         - macOS
         - Linux
         - WSL
-        - 其他（请在「补充信息」中说明）
+        - 其他 / Other（请在「补充信息」中说明 · explain under Additional context）
     validations:
       required: true
 
   - type: input
     id: os-detail
     attributes:
-      label: 操作系统版本与架构
-      description: 例如 Windows 11 23H2 x64、Ubuntu 24.04 arm64、macOS 15.3 arm64
+      label: 操作系统版本与架构 / OS version and architecture
+      description: '例如 / e.g. Windows 11 23H2 x64、Ubuntu 24.04 arm64、macOS 15.3 arm64'
       placeholder: Windows 11 23H2 x64
     validations:
       required: true
@@ -66,21 +72,21 @@ body:
   - type: dropdown
     id: mirror
     attributes:
-      label: 是否使用了 --mirror
-      description: 出问题时是否使用了多源择优 / 镜像相关参数
+      label: 是否使用了 --mirror / Was --mirror used
+      description: 出问题时是否使用了多源择优 / 镜像相关参数 / Whether multi-source or mirror options were in play
       options:
-        - 未使用 --mirror
-        - 使用了 --mirror（使用内置镜像候选）
-        - 使用了 --mirror 并指定了自定义镜像
-        - 不确定
+        - 未使用 --mirror / No --mirror
+        - 使用了 --mirror（内置镜像候选）/ --mirror with built-in candidates
+        - 使用了 --mirror 并指定了自定义镜像 / --mirror with a custom mirror
+        - 不确定 / Not sure
     validations:
       required: true
 
   - type: textarea
     id: command
     attributes:
-      label: 执行的完整命令
-      description: 原样粘贴你执行的命令，并**删除任何 token、签名参数或私有地址**
+      label: 执行的完整命令 / Full command
+      description: 原样粘贴你执行的命令，并**删除任何 token、签名参数或私有地址** / Paste the command verbatim and **remove any token, signature parameter or private address**
       render: shell
       placeholder: ghpull https://example.com/big.bin -o big.bin
     validations:
@@ -89,16 +95,16 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: 期望行为
-      description: 你预期 ghpull 应该做什么
+      label: 期望行为 / Expected behaviour
+      description: 你预期 ghpull 应该做什么 / What you expected ghpull to do
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: 实际行为
-      description: 实际发生了什么；有报错请粘贴完整错误输出与退出码
+      label: 实际行为 / Actual behaviour
+      description: 实际发生了什么；有报错请粘贴完整输出与退出码 / What actually happened; paste the full output and exit code if it failed
       render: shell
     validations:
       required: true
@@ -106,20 +112,28 @@ body:
   - type: textarea
     id: repro
     attributes:
-      label: 最小复现方式
+      label: 最小复现方式 / Minimal reproduction
       description: |
         给出能稳定复现的最短步骤（命令序列、文件大小量级、是否可断网/限速复现）。
 
-        **关于 URL 类型**：请勿粘贴私有链接、带签名或带时效的链接、以及需要认证的内部地址。
-        只需要说明 URL 属于哪一类即可（公开 GitHub Release 资产 / 公开 HTTP Range 服务 /
-        企业内部制品库 / 预签名对象存储链接），必要时用 `https://example.com/file.bin` 占位。
+        The shortest steps that reproduce it reliably (command sequence, rough file size,
+        whether it reproduces on a throttled or offline link).
+
+        **关于 URL 类型 / About URLs**：请勿粘贴私有链接、带签名或带时效的链接、以及需要认证的内部地址；
+        只需说明 URL 属于哪一类（公开 GitHub Release 资产 / 公开 HTTP Range 服务 / 企业内部制品库 /
+        预签名对象存储链接），必要时用 `https://example.com/file.bin` 占位。
+
+        Do not paste private links, signed or time-limited links, or authenticated internal
+        addresses — just say which category the URL belongs to (public GitHub release asset /
+        public HTTP Range endpoint / internal artifact repository / presigned object storage),
+        and use `https://example.com/file.bin` as a placeholder when needed.
     validations:
       required: true
 
   - type: textarea
     id: extra
     attributes:
-      label: 补充信息
-      description: 日志、截图、网络环境（代理、限速）、与单线程下载的对比结果等（可选）
+      label: 补充信息 / Additional context
+      description: 日志、截图、网络环境（代理、限速）、与单线程下载的对比结果等（可选）/ Logs, screenshots, network environment (proxy, throttling), comparison with a single-connection download (optional)
     validations:
       required: false

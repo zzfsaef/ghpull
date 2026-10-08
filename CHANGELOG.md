@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Bilingual documentation. Every reader-facing document now exists in English and in
+  Simplified Chinese, with a language switcher at the top of each file:
+  `README.md` / `README.zh-CN.md`, `legacy/README.md` / `legacy/README.zh-CN.md`,
+  `CONTRIBUTING.md` / `CONTRIBUTING.zh-CN.md`, `SECURITY.md` / `SECURITY.zh-CN.md`,
+  plus `CODE_OF_CONDUCT.zh-CN.md` alongside the canonical English
+  `CODE_OF_CONDUCT.md` (it points at the official Contributor Covenant translation
+  and records the one project-specific change: the enforcement channel).
+- The issue forms in `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md`
+  are bilingual field by field, so a reporter can fill them in either language.
+
 ## [0.1.0] - 2026-10-08
 
 First release.

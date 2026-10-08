@@ -1,5 +1,7 @@
 # ghpull
 
+**English** · [简体中文](README.zh-CN.md)
+
 A zero-dependency Node.js CLI for pulling large single files (GitHub release assets, ISO images, tarballs) over slow or flaky links: concurrent HTTP Range requests, multi-source selection, two-layer resume, a stall watchdog and built-in SHA-256 verification — installable with `npx`, with no binary to download and no external downloader required.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zzfsaef/ghpull/blob/main/LICENSE)
@@ -318,3 +320,5 @@ This program comes with no warranty. You must use this program at your own risk.
 [MIT](https://github.com/zzfsaef/ghpull/blob/main/LICENSE) © ghpull contributors.
 
 Contributions are welcome — see [CONTRIBUTING.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.md). To report a vulnerability, use [private reporting](https://github.com/zzfsaef/ghpull/security/advisories/new) as described in [SECURITY.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.md); please do not open a public issue for security problems.
+
+Every reader-facing document exists in English and in Simplified Chinese: this file and [README.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/README.zh-CN.md), [CONTRIBUTING.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.md) / [CONTRIBUTING.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/CONTRIBUTING.zh-CN.md), [SECURITY.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.md) / [SECURITY.zh-CN.md](https://github.com/zzfsaef/ghpull/blob/main/SECURITY.zh-CN.md), and the files under [`legacy/`](https://github.com/zzfsaef/ghpull/tree/main/legacy).

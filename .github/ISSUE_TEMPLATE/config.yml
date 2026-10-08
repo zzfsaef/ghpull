@@ -1,9 +1,9 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: 安全漏洞（请勿公开）
+  - name: 安全漏洞（请勿公开）/ Security vulnerability (do not disclose publicly)
     url: https://github.com/zzfsaef/ghpull/security/advisories/new
-    about: 请通过 GitHub Security Advisories 私密上报，不要在公开 issue 里披露漏洞细节或 PoC。
-  - name: 使用问题与讨论
+    about: 请通过 GitHub Security Advisories 私密上报，不要在公开 issue 里披露漏洞细节或 PoC。/ Report privately through GitHub Security Advisories; never disclose details or a PoC in a public issue.
+  - name: 使用问题与讨论 / Usage questions and discussion
     url: https://github.com/zzfsaef/ghpull/discussions
-    about: 不确定算不算 bug、想讨论用法或分享使用经验，请到 Discussions。
+    about: 不确定算不算 bug、想讨论用法或分享使用经验，请到 Discussions。/ For "is this a bug?", usage questions and experience sharing.

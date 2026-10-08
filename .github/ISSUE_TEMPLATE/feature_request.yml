@@ -1,5 +1,5 @@
-name: 功能建议
-description: 提出新功能、新参数或行为改进的建议
+name: 功能建议 / Feature request
+description: 提出新功能、新参数或行为改进的建议 / Suggest a new feature, option or behaviour change
 title: '[Feature]: '
 labels: ['enhancement']
 body:
@@ -10,62 +10,67 @@ body:
         与这个定位冲突的提议（例如引入运行时依赖）通常不会被接受，
         请在方案里说明如何在不新增依赖的前提下实现。
 
+        Thanks for the suggestion. ghpull is deliberately a **zero-dependency**, client-only
+        multi-source segmented download CLI. Proposals that conflict with that (introducing a
+        runtime dependency, for example) are usually rejected — please explain how your idea
+        works without adding one.
+
   - type: checkboxes
     id: preflight
     attributes:
-      label: 提交前确认
+      label: 提交前确认 / Preflight
       options:
-        - label: 我已搜索过现有 issue 与 discussions，确认这不是重复建议
+        - label: 我已搜索过现有 issue 与 discussions，确认这不是重复建议 / I searched existing issues and discussions and this is not a duplicate
           required: true
-        - label: 这个建议可以在不引入任何运行时依赖的前提下实现
+        - label: 这个建议可以在不引入任何运行时依赖的前提下实现 / This can be implemented without adding any runtime dependency
           required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: 想解决的问题
-      description: 描述你遇到的实际场景与痛点（比直接描述实现方案更重要）
+      label: 想解决的问题 / The problem
+      description: 描述你遇到的实际场景与痛点（比直接描述实现方案更重要）/ Describe the real scenario and the pain point — that matters more than the implementation
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: 建议的方案
-      description: 期望的行为、CLI 参数名与语义、与现有参数（并发数、镜像、续传、校验）的交互方式
+      label: 建议的方案 / Proposed solution
+      description: 期望的行为、CLI 参数名与语义、与现有参数（并发数、镜像、续传、校验）的交互方式 / Desired behaviour, CLI option names and semantics, and how it interacts with existing options (concurrency, mirrors, resume, verification)
     validations:
       required: true
 
   - type: dropdown
     id: area
     attributes:
-      label: 涉及的模块
-      description: 建议主要落在哪一部分
+      label: 涉及的模块 / Area
+      description: 建议主要落在哪一部分 / Which part the idea mainly touches
       options:
-        - 分段并发与调度
-        - 多源择优与镜像
-        - 断点续传
-        - 停滞看门狗与超时重试
-        - SHA-256 校验
-        - 覆盖保护与输出路径
-        - CLI 参数与输出格式
-        - 文档
-        - 其他 / 不确定
+        - 分段并发与调度 / Segmented transfer and scheduling
+        - 多源择优与镜像 / Multi-source selection and mirrors
+        - 断点续传 / Resume
+        - 停滞看门狗与超时重试 / Stall watchdog and retry
+        - SHA-256 校验 / SHA-256 verification
+        - 覆盖保护与输出路径 / Overwrite protection and output paths
+        - CLI 参数与输出格式 / CLI options and output formats
+        - 文档 / Documentation
+        - 其他 / 不确定 · Other / not sure
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: 考虑过的替代方案
-      description: 现有参数或外部工具能否绕过？为什么不够用？
+      label: 考虑过的替代方案 / Alternatives considered
+      description: 现有参数或外部工具能否绕过？为什么不够用？/ Can existing options or external tools cover it? Why are they not enough?
     validations:
       required: false
 
   - type: textarea
     id: extra
     attributes:
-      label: 补充信息
-      description: 参考实现、其他工具的做法、期望的输出样例等（可选）
+      label: 补充信息 / Additional context
+      description: 参考实现、其他工具的做法、期望的输出样例等（可选）/ Reference implementations, how other tools do it, expected sample output (optional)
     validations:
       required: false
