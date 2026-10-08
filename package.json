@@ -1,0 +1,56 @@
+{
+  "name": "ghpull",
+  "version": "0.1.0",
+  "description": "Zero-dependency CLI for pulling large files from GitHub on slow links: segmented HTTP Range requests, source racing, resumable transfers, stall watchdog and SHA-256 verification.",
+  "type": "module",
+  "bin": {
+    "ghpull": "bin/ghpull.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "check": "node tools/check-syntax.mjs",
+    "typecheck": "npx --yes typescript@5 tsc -p jsconfig.json"
+  },
+  "keywords": [
+    "download",
+    "downloader",
+    "github",
+    "resume",
+    "range",
+    "cli",
+    "sha256",
+    "zero-dependency"
+  ],
+  "license": "MIT",
+  "author": "ghpull contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zzfsaef/ghpull.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zzfsaef/ghpull/issues"
+  },
+  "homepage": "https://github.com/zzfsaef/ghpull#readme",
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}

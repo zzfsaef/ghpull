@@ -1,0 +1,125 @@
+name: Bug 报告
+description: 报告 ghpull 的行为异常、崩溃或下载结果不正确
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间报告问题。请尽量把字段填完整 —— ghpull 涉及网络、并发分段与断点续传，
+        缺少 **版本 / Node 版本 / 操作系统 / 完整命令** 这几项时基本无法复现。
+
+        **安全漏洞不要在这里提交**，请走
+        [GitHub Security Advisories](https://github.com/zzfsaef/ghpull/security/advisories/new) 私密上报。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 issue，确认这不是重复问题
+          required: true
+        - label: 我正在使用最新发布版本，或已确认问题在默认分支上依然存在
+          required: true
+
+  - type: input
+    id: ghpull-version
+    attributes:
+      label: ghpull 版本
+      description: 运行 `ghpull --version`（或 `npm ls -g ghpull`）得到的完整版本号
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js 版本
+      description: 运行 `node --version` 得到的完整版本号（ghpull 要求 Node >= 18）
+      placeholder: v22.14.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      description: 出问题时使用的操作系统
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - WSL
+        - 其他（请在「补充信息」中说明）
+    validations:
+      required: true
+
+  - type: input
+    id: os-detail
+    attributes:
+      label: 操作系统版本与架构
+      description: 例如 Windows 11 23H2 x64、Ubuntu 24.04 arm64、macOS 15.3 arm64
+      placeholder: Windows 11 23H2 x64
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mirror
+    attributes:
+      label: 是否使用了 --mirror
+      description: 出问题时是否使用了多源择优 / 镜像相关参数
+      options:
+        - 未使用 --mirror
+        - 使用了 --mirror（使用内置镜像候选）
+        - 使用了 --mirror 并指定了自定义镜像
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: 执行的完整命令
+      description: 原样粘贴你执行的命令，并**删除任何 token、签名参数或私有地址**
+      render: shell
+      placeholder: ghpull https://example.com/big.bin -o big.bin
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 你预期 ghpull 应该做什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么；有报错请粘贴完整错误输出与退出码
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 最小复现方式
+      description: |
+        给出能稳定复现的最短步骤（命令序列、文件大小量级、是否可断网/限速复现）。
+
+        **关于 URL 类型**：请勿粘贴私有链接、带签名或带时效的链接、以及需要认证的内部地址。
+        只需要说明 URL 属于哪一类即可（公开 GitHub Release 资产 / 公开 HTTP Range 服务 /
+        企业内部制品库 / 预签名对象存储链接），必要时用 `https://example.com/file.bin` 占位。
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息
+      description: 日志、截图、网络环境（代理、限速）、与单线程下载的对比结果等（可选）
+    validations:
+      required: false

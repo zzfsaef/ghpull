@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Publishing uses npm trusted publishing (OIDC), so no long-lived credential
+      # (npm access token or repository secret) is configured or needed here.
+      # Prerequisites:
+      #   1. register this repository + this workflow file as a trusted publisher
+      #      in the package settings on npmjs.com;
+      #   2. npm CLI >= 11.5.1 and Node >= 22.14.0 are required for OIDC publishing
+      #      (Node 22.x resolves to the latest 22 release, whose bundled npm may be
+      #      older than 11.5.1 — if publish fails on OIDC, run `npm install -g npm@11`);
+      #   3. this only works on GitHub-hosted runners: self-hosted runners cannot
+      #      obtain the OIDC token, and therefore cannot produce provenance.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: https://registry.npmjs.org
+
+      # Zero-dependency project: no npm install, no package-lock.json.
+      - name: Syntax check
+        run: node tools/check-syntax.mjs
+
+      - name: Test
+        run: node --test
+
+      - name: Publish
+        run: npm publish --provenance --access public

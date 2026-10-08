@@ -1,0 +1,29 @@
+# 默认按文本处理并统一为 LF，避免 Windows 上把 CRLF 提交进库导致 diff 全红
+* text=auto eol=lf
+
+# 必须在 Windows 上以 CRLF 运行/编辑的文件
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# 明确的文本类型（防止被当二进制）
+*.mjs  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# 二进制，不做换行转换
+*.png  binary
+*.gif  binary
+*.jpg  binary
+*.ico  binary
+*.zip  binary
+
+# npm 打包时排除（不影响 git 仓库内容，只让 tarball 更瘦）
+.github/       export-ignore
+test/          export-ignore
+.editorconfig  export-ignore
+.gitattributes export-ignore
+.gitignore     export-ignore

@@ -1,0 +1,27 @@
+# 依赖与构建产物
+node_modules/
+coverage/
+dist/
+*.tsbuildinfo
+
+# 本地状态与临时文件（引擎运行时产物，绝不入库）
+.ghpull/
+*.part
+*.part.state.json
+tmp/
+
+# 日志与环境
+*.log
+npm-debug.log*
+yarn-error.log*
+.env
+.env.*
+
+# 编辑器与操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
