@@ -153,6 +153,12 @@ export function createReporter(options) {
             stderr.write(`并发定在 ${event.conns} 条（${formatBps(event.bps)}，${event.reason}）\n`);
           }
           break;
+        case "ramp-reset":
+          newline();
+          if (options.verbose) {
+            stderr.write(`并发闸门重开（${formatBps(event.bps)}，${event.reason}）\n`);
+          }
+          break;
         case "stall":
           newline();
           stderr.write(`分段 ${event.segment} ${event.reason}，换源重试\n`);

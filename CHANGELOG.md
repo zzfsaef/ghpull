@@ -38,6 +38,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support claim was narrowed to match (the code still supports `darwin`, it is just
   not exercised by CI).
 
+### Fixed
+
+- The adaptive gate no longer counts start-up cost as throughput. Previously the first
+  window started when the process did, so the HEAD probe, the `Range: bytes=0-0`
+  capability check and the first-byte delay were charged to the one-connection step and
+  made a healthy link look starved — the gate then raised the target for nothing (seen
+  on one of three rounds, which dropped from 11.93 MiB/s to 3.07 MiB/s). The window now
+  starts once bytes are really landing.
+- The adaptive gate keeps sampling after it locks in a step. Previously a lock was
+  final, so a link that degraded mid-transfer stayed degraded: on a 66 MB file the last
+  0.92 MB crawled at ~20 KiB/s and took 44 s. The gate now reopens when the rate falls
+  well below the best step so far, and remembers the steps that turned out slower
+  (`rampBad`) instead of trying them again. Measured on the same file after the fix: 1
+  connection, 6.1 MiB/s, 15 s.
+
 ## [0.1.0] - 2026-10-08
 
 First release.

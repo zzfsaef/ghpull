@@ -48,6 +48,8 @@ const SAMPLE_STEP = 2;
 const RAMP_FAST_BPS = 4 * 1024 * 1024;
 const RAMP_STARVED_BPS = 256 * 1024;
 const RAMP_IMPROVE = 1.15;
+/** 低于「历史最好档 × 这个系数」就算明显变差：这一档不如之前，或者链路自己变慢了。 */
+const RAMP_BAD = 0.85;
 
 /** 状态落盘的间隔（毫秒）。 */
 const STATE_SAVE_MS = 3000;
@@ -138,8 +140,12 @@ export class Engine {
     this.rampBestBps = 0;
     this.rampBestStage = 1;
     this.rampLocked = true;
-    this.rampWindowAt = Date.now();
+    /** 0 表示「窗口还没开始」——等到第一个真实字节落盘再计时（不把启动开销算进速率）。 */
+    this.rampWindowAt = 0;
     this.rampWindowBytes = 0;
+    /** 已经试过加档（第一档的「无条件试下一档」只做一次）与被证明更差的档。 */
+    this.rampTriedUp = false;
+    this.rampBad = new Set();
     this.lastSaveAt = 0;
     this.lastProgressAt = 0;
     this.fatal = null;
@@ -461,8 +467,10 @@ export class Engine {
     this.rampBestBps = 0;
     this.rampBestStage = this.rampStages[0];
     this.rampLocked = !this.opts.adaptive || this.rampStages.length === 1;
-    this.rampWindowAt = Date.now();
+    this.rampWindowAt = 0;
     this.rampWindowBytes = this.fetchedBytes;
+    this.rampTriedUp = false;
+    this.rampBad.clear();
     this.targetConns = this.opts.adaptive
       ? this.rampStages[0]
       : Math.max(1, Math.min(this.opts.conns, this.opts.maxConns));
@@ -564,34 +572,81 @@ export class Engine {
    * 加档没换来速度就退回最好的一档并锁死。实测见 README「Segmentation」一节：
    * 健康链路上单连接 11 MiB/s、摊开 8 条只有 2.06 MiB/s —— 并发是保险，不是提速。
    * `--no-adaptive` 时退回旧的 ±2 采样微调（一上来就摊开）。
+   *
+   * 两条纪律都是真机踩出来的：
+   *   1) 第一个窗口从**第一个字节真的落盘**之后才开始计时。HEAD 探测、`Range: bytes=0-0`
+   *      复核与首字节延迟不是连接数的锅；算进去会把 1 档估成「被饿住」，白升一档
+   *      （实测出现过 3 轮里 1 轮从 11.93 掉到 3.07 MiB/s）。
+   *   2) 锁档之后**继续采样**。链路中途变慢（末段被饿住、镜像限速）时要重新开闸，
+   *      并把「已经证明更差的档」记进 `rampBad`，不再回头试。
    */
   #adaptConcurrency(now) {
     if (!this.opts.adaptive) return this.#shimmyConcurrency(now);
-    if (this.rampLocked) return;
+    // 窗口还没开始：等第一个真实字节，别把启动开销算进这一档的速率。
+    if (this.rampWindowAt === 0) {
+      if (this.fetchedBytes > this.rampWindowBytes) {
+        this.rampWindowBytes = this.fetchedBytes;
+        this.rampWindowAt = now;
+      }
+      return;
+    }
     const windowMs = Number(this.opts.rampSampleMs) > 0 ? Number(this.opts.rampSampleMs) : SAMPLE_SEC * 1000;
     if (now - this.rampWindowAt < windowMs) return;
     const seconds = Math.max(0.05, (now - this.rampWindowAt) / 1000);
     const bytes = this.fetchedBytes - this.rampWindowBytes;
-    const bps = bytes / seconds;
     this.rampWindowAt = now;
     this.rampWindowBytes = this.fetchedBytes;
     // 这一档一个字节都没下动：交给看门狗/重试换源，加连接救不了卡住的源。
     if (bytes <= 0) return;
+    const bps = bytes / seconds;
     const stage = this.rampStages[this.rampStageIndex] ?? this.targetConns;
-    const isLast = this.rampStageIndex >= this.rampStages.length - 1;
     const improved = this.rampBestBps > 0 && bps >= this.rampBestBps * RAMP_IMPROVE;
     if (bps > this.rampBestBps) {
       this.rampBestBps = bps;
       this.rampBestStage = stage;
     }
-    if (isLast) return this.#lockRamp(stage, bps, "已经是连接上限");
-    if (bps >= RAMP_FAST_BPS) return this.#lockRamp(stage, bps, "单连接已经够快，不必摊开");
-    // 第一档无条件试下一档；之后要么真的更快，要么被限速（低于下限），否则回到最好的一档。
-    if (this.rampStageIndex === 0 || improved || bps < RAMP_STARVED_BPS) {
-      this.rampStageIndex += 1;
-      return this.#applyRampStage(this.rampStages[this.rampStageIndex], bps, improved ? "更快" : "单连接被限速");
+    // 明显不如历史最好的一档：要么是这一档更差，要么是链路自己变慢了。
+    if (this.rampBestBps > 0 && bps < this.rampBestBps * RAMP_BAD) {
+      if (stage === this.rampBestStage) {
+        // 最好的一档也掉下来 ⇒ 链路状态变了，把基准重置到现在、解开锁重新找档。
+        this.rampBestBps = bps;
+        this.rampBad.clear();
+        this.rampLocked = false;
+        this.emit({ type: "ramp-reset", bps: Math.round(bps), reason: "链路变慢，重新测档" });
+        return;
+      }
+      // 这一档确实更差：记住它，退回最好的一档（锁解开，下个窗口再判断）。
+      this.rampBad.add(stage);
+      this.rampLocked = false;
+      const back = this.rampStages.indexOf(this.rampBestStage);
+      if (back >= 0 && back < this.rampStageIndex) {
+        this.rampStageIndex = back;
+        return this.#applyRampStage(this.rampBestStage, bps, `${stage} 条比 ${this.rampBestStage} 条慢，退回去`);
+      }
+      this.emit({ type: "ramp-reset", bps: Math.round(bps), reason: `${stage} 条更慢，回到 ${this.rampBestStage} 条` });
+      return;
     }
-    return this.#lockRamp(this.rampBestStage, bps, `加到 ${stage} 条没有更快`);
+    // 档位没变差就保持现状（锁着就别动）。
+    if (this.rampLocked) return;
+    if (bps >= RAMP_FAST_BPS) return this.#lockRamp(this.rampBestStage, bps, "已经够快，不必摊开");
+    const starved = bps < RAMP_STARVED_BPS;
+    // 第一档无条件试下一档；之后要么真的更快、要么被限速（低于下限），否则回到最好的一档。
+    if (starved || improved || !this.rampTriedUp) {
+      const up = this.#nextStageUp();
+      if (!up) return this.#lockRamp(this.rampBestStage, bps, "没有更好的档可试了");
+      this.rampTriedUp = true;
+      this.rampStageIndex = up.index;
+      return this.#applyRampStage(up.stage, bps, starved ? "被限速，加连接" : improved ? "更快" : "先试下一档");
+    }
+    return this.#lockRamp(this.rampBestStage, bps, `加到 ${stage} 条不再更快`);
+  }
+
+  /** 当前档之上、还没被证明更差的一档（`rampBad` 挡住回头路）。 */
+  #nextStageUp() {
+    for (let i = this.rampStageIndex + 1; i < this.rampStages.length; i += 1) {
+      if (!this.rampBad.has(this.rampStages[i])) return { index: i, stage: this.rampStages[i] };
+    }
+    return null;
   }
 
   /** `--no-adaptive`：每 6 秒采样一次，速率变好 +2，变差 -2。 */

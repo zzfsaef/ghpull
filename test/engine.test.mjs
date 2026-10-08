@@ -368,6 +368,99 @@ test("自适应并发：单连接被限速时逐级加连接（并发是保险�
   }
 });
 
+test("自适应并发：探测与首字节的启动开销不算进第一档速率", async () => {
+  // 真机踩过：HEAD 探测 + `Range: bytes=0-0` 复核 + 首字节要 1.5–2.5s，旧实现从进程启动
+  // 就开始给第一档计时，于是「1 档」被算成被饿住的链路，白升一档（3 轮里 1 轮从
+  // 11.93 掉到 3.07 MiB/s）。这条用例让启动延迟长达 2 × 1050ms，而链路本身有 6.4 MiB/s：
+  // 闸门只在真的有字节落盘之后才开始计时，所以第一档就该被判成「够快」并全程只用 1 条连接。
+  const size = 16 * 1024 * 1024;
+  const server = await startServer({ size, delayMs: 1050, chunkBytes: 128 * 1024, chunkDelayMs: 20 });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    /** @type {any[]} */
+    const events = [];
+    const result = await new Engine(
+      options(server.url, out, {
+        conns: 8,
+        maxConns: 8,
+        adaptive: true,
+        rampSampleMs: 700,
+        minSplit: 16 * 1024 * 1024,
+        stallSec: 30,
+        timeoutSec: 30,
+        lowestSpeed: 0,
+      }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+
+    assert.equal(result.ok, true);
+    assert.equal(result.bytes, size);
+    assert.equal(result.sha256, sha256Of(server.body));
+    const ramps = events.filter((event) => event.type === "ramp");
+    assert.equal(
+      ramps.length,
+      0,
+      `启动开销不该把第一档算成被限速——那会白升一档（实际升档：${ramps.map((event) => event.reason).join(" / ")}）`,
+    );
+    assert.equal(result.peakConns, 1, `链路本身够快就该停在 1 条（peakConns=${result.peakConns}）`);
+    const lock = events.find((event) => event.type === "ramp-done");
+    assert.equal(lock.conns, 1, "第一档够快就该锁在 1 条");
+    assert.deepEqual(await readFile(out), server.body);
+  } finally {
+    await server.close();
+    await temp.cleanup();
+  }
+});
+
+test("自适应并发：锁档之后链路变慢，要重新开闸加连接", async () => {
+  // 真机踩过的第二个坑：闸门一旦锁定就再也不采样，于是「前 68MB 很快、末段 0.92MB 被饿住」
+  // 只能干等（那一段花了 44s）。这条用例让同一条响应中途变慢（前 4MiB 6.4 MiB/s，
+  // 之后 8KiB/40ms ≈ 200KiB/s，低于下限），断言：先锁在 1 条，然后必须重新开闸并升档。
+  const size = 5 * 1024 * 1024;
+  const server = await startServer({
+    size,
+    chunkBytes: 128 * 1024,
+    chunkDelayMs: 20,
+    slowAfterBytes: 4 * 1024 * 1024,
+    slowChunkBytes: 8 * 1024,
+    slowChunkDelayMs: 40,
+  });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    /** @type {any[]} */
+    const events = [];
+    const result = await new Engine(
+      options(server.url, out, {
+        conns: 8,
+        maxConns: 8,
+        adaptive: true,
+        rampSampleMs: 200,
+        minSplit: 64 * 1024,
+        stallSec: 30,
+        timeoutSec: 30,
+        lowestSpeed: 0,
+      }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+
+    assert.equal(result.ok, true);
+    assert.equal(result.bytes, size);
+    assert.equal(result.sha256, sha256Of(server.body));
+    const lockAt = events.findIndex((event) => event.type === "ramp-done");
+    assert.ok(lockAt >= 0, "第一档够快时应该先锁定，否则这条用例什么都没测到");
+    assert.equal(events[lockAt].conns, 1, "前 4MiB 够快，闸门应锁在 1 条");
+    const reopenAt = events.findIndex((event, index) => index > lockAt && (event.type === "ramp" || event.type === "ramp-reset"));
+    assert.ok(reopenAt > lockAt, "锁档后链路变慢必须重新开闸，不能一直等在被饿住的 1 条连接上");
+    assert.ok(result.peakConns > 1, `变慢后要加连接（peakConns=${result.peakConns}）`);
+    assert.deepEqual(await readFile(out), server.body);
+  } finally {
+    await server.close();
+    await temp.cleanup();
+  }
+});
+
 /** 一个只会回固定状态码的服务：模拟「原始地址整段不可用」。 */
 async function startStatusServer(status) {
   const server = http.createServer((_req, res) => {

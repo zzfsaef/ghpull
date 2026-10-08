@@ -39,6 +39,9 @@ export function sha256Of(data) {
  *   truncateEvery?: number,
  *   chunkBytes?: number,
  *   chunkDelayMs?: number,
+ *   slowAfterBytes?: number,
+ *   slowChunkBytes?: number,
+ *   slowChunkDelayMs?: number,
  *   slowRange?: [number, number],
  *   noAcceptRangesHeader?: boolean,
  *   etag?: string,
@@ -144,6 +147,7 @@ export async function startServer(options = {}) {
         options.slowRange !== undefined && start >= options.slowRange[0] && start <= options.slowRange[1];
       if (options.chunkBytes && (options.slowRange === undefined || inSlowRange)) {
         const delay = options.chunkDelayMs ?? 10;
+        const slowAfter = options.slowAfterBytes;
         openResponses.add(res);
         res.on("close", () => openResponses.delete(res));
         let offset = 0;
@@ -153,11 +157,17 @@ export async function startServer(options = {}) {
             res.end();
             return;
           }
-          const next = Math.min(offset + options.chunkBytes, slice.length);
+          // slowAfterBytes：这一条响应写够这么多字节之后换成慢速参数。
+          // 真机上「前 90% 很快、末段被饿住」很常见（自适应闸门就是为它准备的），
+          // 而 slowRange 只能按请求起点分快慢，复现不出「同一条连接中途变慢」。
+          const slow = slowAfter !== undefined && start + offset >= slowAfter;
+          const size = slow ? options.slowChunkBytes ?? options.chunkBytes : options.chunkBytes;
+          const wait = slow ? options.slowChunkDelayMs ?? delay : delay;
+          const next = Math.min(offset + size, slice.length);
           res.write(slice.subarray(offset, next));
           offset = next;
           if (offset >= slice.length) res.end();
-          else setTimeout(pump, delay);
+          else setTimeout(pump, wait);
         };
         setTimeout(pump, delay);
         return;
