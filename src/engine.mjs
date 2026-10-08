@@ -37,6 +37,18 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SAMPLE_SEC = 6;
 const SAMPLE_STEP = 2;
 
+/**
+ * 自适应并发的**启动闸门**（`--no-adaptive` 可关）。
+ *
+ * 实测（同一 66MB 文件、直连、20s 一臂、8 轮轮转）：单连接能跑到 11.27 MiB/s，
+ * 而一上来就摊开 8 条连接反被钉在 2.06 MiB/s（每条约 0.26 MiB/s）——健康链路上
+ * 并发是**惩罚**；只有单连接被饿住（0.02 MiB/s）时，8 连接才反过来赢 40 倍以上。
+ * 所以默认先只开 1 条连接测速：够快就不摊开，确认真被限速才逐级升到 `--conns`。
+ */
+const RAMP_FAST_BPS = 4 * 1024 * 1024;
+const RAMP_STARVED_BPS = 256 * 1024;
+const RAMP_IMPROVE = 1.15;
+
 /** 状态落盘的间隔（毫秒）。 */
 const STATE_SAVE_MS = 3000;
 
@@ -120,6 +132,14 @@ export class Engine {
     this.targetConns = 1;
     this.lastSampleAt = Date.now();
     this.lastSampleBps = 0;
+    /** 启动闸门状态：档位表、当前档、窗口起点与窗口内已抓字节数。 */
+    this.rampStages = [1];
+    this.rampStageIndex = 0;
+    this.rampBestBps = 0;
+    this.rampBestStage = 1;
+    this.rampLocked = true;
+    this.rampWindowAt = Date.now();
+    this.rampWindowBytes = 0;
     this.lastSaveAt = 0;
     this.lastProgressAt = 0;
     this.fatal = null;
@@ -385,7 +405,11 @@ export class Engine {
 
     if (this.opts.force) await clearParts(this.out);
     await ensurePartsDir(this.out);
-    const initialTarget = Math.max(1, Math.min(this.opts.conns, Math.floor(this.size / (2 * minSplit)) || 1));
+    // 自适应并发下先只切一段：等启动测速窗口（#adaptConcurrency）确认真需要更多连接，
+    // 再由 #maybeSplit 按 targetConns 逐步切开 —— 免得一上来就把链路摊成 8 条。
+    const initialTarget = this.opts.adaptive && this.opts.conns > 1
+      ? 1
+      : Math.max(1, Math.min(this.opts.conns, Math.floor(this.size / (2 * minSplit)) || 1));
     this.segments = [new Segment(this.nextSegmentId++, 0, this.size - 1)];
     while (this.segments.length < initialTarget) {
       const largest = this.#largestSplittable(minSplit);
@@ -393,7 +417,7 @@ export class Engine {
       this.#split(largest);
     }
     this.reusedBytes = 0;
-    this.emit({ type: "plan", segments: this.segments.length, minSplit, initialTarget });
+    this.emit({ type: "plan", segments: this.segments.length, minSplit, initialTarget, adaptive: this.opts.adaptive === true });
   }
 
   /** @param {number} minSplit */
@@ -430,8 +454,18 @@ export class Engine {
 
   /** 主循环：worker 抢段 + 定时器做自适应/看门狗/再切分。 */
   async #runSegmented() {
-    // 目标并发只看 --conns/--max-conns：分段数会在运行中增长，所以不受初始分段数限制。
-    this.targetConns = Math.max(1, Math.min(this.opts.conns, this.opts.maxConns));
+    // 默认自适应：先按闸门的第一档开（通常就是 1 条连接）测速，够快就不摊开；
+    // `--no-adaptive` 时直接按 --conns 开满。分段数会在运行中增长，不受初始分段数限制。
+    this.rampStages = this.#planStages();
+    this.rampStageIndex = 0;
+    this.rampBestBps = 0;
+    this.rampBestStage = this.rampStages[0];
+    this.rampLocked = !this.opts.adaptive || this.rampStages.length === 1;
+    this.rampWindowAt = Date.now();
+    this.rampWindowBytes = this.fetchedBytes;
+    this.targetConns = this.opts.adaptive
+      ? this.rampStages[0]
+      : Math.max(1, Math.min(this.opts.conns, this.opts.maxConns));
     const ticker = this.#startTicker();
     // worker 按上限开满，超出的那些在闸门前每 50ms 轮询一次——不占带宽，
     // 但保证分段一多就立刻有人接手。
@@ -522,8 +556,46 @@ export class Engine {
     }
   }
 
-  /** 自适应并发：每 6 秒采样一次，速率变好 +2，变差 -2。 */
+  /**
+   * 自适应并发。
+   *
+   * 默认走**启动闸门**：先只开 1 条连接，每 `SAMPLE_SEC` 秒看一次这一档真实跑出来的
+   * 速率，只有「确实更快」或者「被限速（低于下限）」才加连接，最多到 `--conns`；
+   * 加档没换来速度就退回最好的一档并锁死。实测见 README「Segmentation」一节：
+   * 健康链路上单连接 11 MiB/s、摊开 8 条只有 2.06 MiB/s —— 并发是保险，不是提速。
+   * `--no-adaptive` 时退回旧的 ±2 采样微调（一上来就摊开）。
+   */
   #adaptConcurrency(now) {
+    if (!this.opts.adaptive) return this.#shimmyConcurrency(now);
+    if (this.rampLocked) return;
+    const windowMs = Number(this.opts.rampSampleMs) > 0 ? Number(this.opts.rampSampleMs) : SAMPLE_SEC * 1000;
+    if (now - this.rampWindowAt < windowMs) return;
+    const seconds = Math.max(0.05, (now - this.rampWindowAt) / 1000);
+    const bytes = this.fetchedBytes - this.rampWindowBytes;
+    const bps = bytes / seconds;
+    this.rampWindowAt = now;
+    this.rampWindowBytes = this.fetchedBytes;
+    // 这一档一个字节都没下动：交给看门狗/重试换源，加连接救不了卡住的源。
+    if (bytes <= 0) return;
+    const stage = this.rampStages[this.rampStageIndex] ?? this.targetConns;
+    const isLast = this.rampStageIndex >= this.rampStages.length - 1;
+    const improved = this.rampBestBps > 0 && bps >= this.rampBestBps * RAMP_IMPROVE;
+    if (bps > this.rampBestBps) {
+      this.rampBestBps = bps;
+      this.rampBestStage = stage;
+    }
+    if (isLast) return this.#lockRamp(stage, bps, "已经是连接上限");
+    if (bps >= RAMP_FAST_BPS) return this.#lockRamp(stage, bps, "单连接已经够快，不必摊开");
+    // 第一档无条件试下一档；之后要么真的更快，要么被限速（低于下限），否则回到最好的一档。
+    if (this.rampStageIndex === 0 || improved || bps < RAMP_STARVED_BPS) {
+      this.rampStageIndex += 1;
+      return this.#applyRampStage(this.rampStages[this.rampStageIndex], bps, improved ? "更快" : "单连接被限速");
+    }
+    return this.#lockRamp(this.rampBestStage, bps, `加到 ${stage} 条没有更快`);
+  }
+
+  /** `--no-adaptive`：每 6 秒采样一次，速率变好 +2，变差 -2。 */
+  #shimmyConcurrency(now) {
     if (now - this.lastSampleAt < SAMPLE_SEC * 1000) return;
     const bps = this.globalSpeed.bps;
     if (this.lastSampleBps > 0) {
@@ -538,6 +610,32 @@ export class Engine {
     }
     this.lastSampleBps = bps;
     this.lastSampleAt = now;
+  }
+
+  /** 启动闸门的档位表：1 → 2 → 4 → … → `--conns`（末档一定是 `--conns`）。 */
+  #planStages() {
+    const max = Math.max(1, Math.min(this.opts.conns, this.opts.maxConns));
+    const stages = [];
+    for (let n = 1; n < max; n *= 2) stages.push(n);
+    stages.push(max);
+    return stages;
+  }
+
+  /** @param {number} next @param {number} bps @param {string} reason */
+  #applyRampStage(next, bps, reason) {
+    if (next === this.targetConns) return;
+    this.targetConns = next;
+    this.emit({ type: "concurrency", target: next, bps: Math.round(bps) });
+    this.emit({ type: "ramp", target: next, bps: Math.round(bps), reason });
+  }
+
+  /** @param {number} stage @param {number} bps @param {string} reason */
+  #lockRamp(stage, bps, reason) {
+    const changed = stage !== this.targetConns;
+    this.targetConns = stage;
+    this.rampLocked = true;
+    if (changed) this.emit({ type: "concurrency", target: stage, bps: Math.round(bps) });
+    this.emit({ type: "ramp-done", conns: stage, bps: Math.round(bps), reason });
   }
 
   #reportProgress(now) {

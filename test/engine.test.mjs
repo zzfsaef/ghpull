@@ -30,7 +30,8 @@ test("完整下载：内容一致、哈希自证、真的并发了", async () =>
   const temp = await makeTempDir();
   try {
     const out = temp.file("out.bin");
-    const result = await new Engine(options(server.url, out), {}).run();
+    // 本用例测的是「分段并发」本身，所以关掉启动闸门（默认自适应会先只开 1 条连接测速）。
+    const result = await new Engine(options(server.url, out, { adaptive: false }), {}).run();
 
     assert.equal(result.ok, true);
     assert.equal(result.bytes, server.body.length);
@@ -279,6 +280,9 @@ test("切分切到正在写的分段上：产物必须与源逐字节一致（�
         stallSec: 10,
         timeoutSec: 15,
         lowestSpeed: 0,
+        // 本用例要复现的是「切分切到正在写的分段上」，所以关掉启动闸门，
+        // 让 2 条连接一开始就都在跑、活跃数掉到上限以下时必然去切剩下的空洞。
+        adaptive: false,
       }),
       { onEvent: (event) => events.push(event) },
     ).run();
@@ -294,6 +298,70 @@ test("切分切到正在写的分段上：产物必须与源逐字节一致（�
     assert.equal(onDisk.length, size, "产物长度必须与声明大小一致");
     assert.equal(result.sha256, sha256Of(server.body));
     assert.deepEqual(onDisk, server.body, "产物必须与源逐字节一致");
+  } finally {
+    await server.close();
+    await temp.cleanup();
+  }
+});
+
+test("自适应并发：链路够快就只用 1 条连接（健康链路上并发是惩罚）", async () => {
+  // 20s 一臂、8 轮轮转的实测（同一 66MB 文件、直连）：单连接 11.27 MiB/s，
+  // 一上来摊开 8 条反而被钉在 2.06 MiB/s。所以默认先只开 1 条连接测速：
+  // 本地服务够快，闸门的第一档就该直接跑完，全程不摊开。
+  const server = await startServer({ size: 512 * 1024, delayMs: 5 });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    /** @type {any[]} */
+    const events = [];
+    const result = await new Engine(
+      options(server.url, out, { conns: 8, maxConns: 8, adaptive: true, rampSampleMs: 200 }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+
+    assert.equal(result.ok, true);
+    assert.equal(result.bytes, server.body.length);
+    assert.equal(result.sha256, sha256Of(server.body));
+    assert.equal(result.peakConns, 1, `默认自适应下快链路不该摊开连接（peakConns=${result.peakConns}）`);
+    const plan = events.find((event) => event.type === "plan");
+    assert.equal(plan.adaptive, true);
+    assert.equal(plan.initialTarget, 1, "自适应时应先只切一段，等测速结果再切");
+  } finally {
+    await server.close();
+    await temp.cleanup();
+  }
+});
+
+test("自适应并发：单连接被限速时逐级加连接（并发是保险）", async () => {
+  // 每连接 16KiB/60ms ≈ 266KiB/s：单连接下 2MiB 要 7.7s，而这条链路对每连接限速，
+  // 加连接是实打实的加速。闸门测到第一档速率低于下限，就该一级一级加到 --conns。
+  const size = 2 * 1024 * 1024;
+  const server = await startServer({ size, chunkBytes: 16 * 1024, chunkDelayMs: 60 });
+  const temp = await makeTempDir();
+  try {
+    const out = temp.file("out.bin");
+    /** @type {any[]} */
+    const events = [];
+    const result = await new Engine(
+      options(server.url, out, {
+        conns: 4,
+        maxConns: 4,
+        adaptive: true,
+        rampSampleMs: 250,
+        minSplit: 128 * 1024,
+        stallSec: 30,
+        timeoutSec: 20,
+        lowestSpeed: 0,
+      }),
+      { onEvent: (event) => events.push(event) },
+    ).run();
+
+    assert.equal(result.ok, true);
+    assert.equal(result.bytes, size);
+    assert.ok(result.peakConns > 1, `单连接被限速时必须加连接（peakConns=${result.peakConns}）`);
+    const ramps = events.filter((event) => event.type === "ramp");
+    assert.ok(ramps.length > 0, "必须真的发生过升档，否则这条用例什么都没测到");
+    assert.deepEqual(await readFile(out), server.body);
   } finally {
     await server.close();
     await temp.cleanup();

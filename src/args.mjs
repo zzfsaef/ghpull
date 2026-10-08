@@ -83,8 +83,9 @@ export const HELP = `ghpull — 多源分段下载器（零依赖，Node >= 18�
       --keep-parts        成功后保留 .ghpull 分片目录
 
 并发与超时：
-      --conns <n>         初始并发连接数（默认 8）
+      --conns <n>         并发连接上限（默认 8；默认自适应，够快就只用 1 条）
       --max-conns <n>     自适应并发上限（默认 16）
+      --no-adaptive       关闭自适应并发：一开始就摊开 --conns 条连接
       --min-split <尺寸>  最小分段长度（默认 8MiB，可取 4M / 8MiB）
       --timeout <秒>      单次请求超时（默认 30）
       --stall-sec <秒>    超过这么久没有任何新字节就判定停滞并换源（默认 12）
@@ -103,7 +104,7 @@ export const HELP = `ghpull — 多源分段下载器（零依赖，Node >= 18�
       --config <文件>      JSON 配置文件，命令行显式给出的选项优先
                           可用的键：conns, maxConns, minSplit, mirrorMode,
                           mirrors, transport, curlPath, timeoutSec, stallSec,
-                          lowestSpeed, retries, progress
+                          lowestSpeed, retries, progress, adaptive
 
 校验与输出：
       --sha256 <哈希>      期望的 SHA-256（可带 sha256: 前缀）
@@ -128,6 +129,7 @@ const OPTION_TABLE = {
   force: { type: "boolean" },
   continue: { type: "boolean" },
   "no-resume": { type: "boolean" },
+  "no-adaptive": { type: "boolean" },
   "keep-parts": { type: "boolean" },
   conns: { type: "string" },
   "max-conns": { type: "string" },
@@ -157,6 +159,7 @@ const OPTION_TABLE = {
  * @property {boolean} continueDownload
  * @property {boolean} resume
  * @property {boolean} keepParts
+ * @property {boolean} adaptive
  * @property {number} conns
  * @property {number} maxConns
  * @property {number} minSplit
@@ -251,6 +254,7 @@ export function parseCliArgs(argv, base) {
     continueDownload: values.continue === true,
     resume: values["no-resume"] !== true,
     keepParts: values["keep-parts"] === true,
+    adaptive: values["no-adaptive"] !== true && cfg.adaptive !== false,
     conns,
     maxConns,
     minSplit,
@@ -291,6 +295,7 @@ export function withDefaults(partial) {
     continueDownload: false,
     resume: true,
     keepParts: false,
+    adaptive: true,
     conns: 8,
     maxConns: 16,
     minSplit: 8 * 1024 * 1024,

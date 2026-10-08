@@ -74,7 +74,7 @@ npx ghpull https://github.com/<owner>/<repo>/releases/download/<tag>/<file> \
   --conns 8 --max-conns 16 --timeout 30 --stall-sec 12
 ```
 
-`--conns` is the starting number of connections, `--max-conns` caps the adaptive growth, and `--stall-sec` decides how long a silent connection may stay silent before it is dropped.
+`--conns` is the ceiling on concurrent connections, `--max-conns` caps the adaptive growth, and `--stall-sec` decides how long a silent connection may stay silent before it is dropped. Concurrency is adaptive by default: the run starts on **one** connection and only spreads out (1 → 2 → 4 → … → `--conns`) when the measurement says the link is being throttled per connection. `--no-adaptive` spreads from the start.
 
 **2. Verify a release asset against its published digest**
 
@@ -129,8 +129,9 @@ Every option below is defined in `src/args.mjs` (`OPTION_TABLE` plus the default
 
 | Long | Short | Type | Default | Allowed range |
 | --- | --- | --- | --- | --- |
-| `--conns` | — | integer | `8` | 1–64 |
+| `--conns` | — | integer | `8` | 1–64 (ceiling; adaptive starts at 1) |
 | `--max-conns` | — | integer | `16` | 1–128; must be `>= --conns` |
+| `--no-adaptive` | — | flag | off (adaptive is on) | spread `--conns` connections immediately |
 | `--min-split` | — | size | `8MiB` | at least `64KiB` |
 | `--timeout` | — | seconds | `30` | 1–3600 (per request) |
 | `--stall-sec` | — | seconds | `12` | 3–3600 (no new bytes → treat as stalled) |
@@ -185,6 +186,7 @@ Exit codes are part of the public interface (`src/errors.mjs`).
 | `mirrorMode` | `--mirror-mode` | `"off"` \| `"manual"` \| `"auto"` |
 | `conns` | `--conns` | number or string |
 | `maxConns` | `--max-conns` | number or string |
+| `adaptive` | `--no-adaptive` (inverted) | boolean (default `true`) |
 | `minSplit` | `--min-split` | number (bytes) or size string |
 | `timeoutSec` | `--timeout` | number or string |
 | `stallSec` | `--stall-sec` | number or string |
@@ -200,6 +202,7 @@ Example:
 {
   "conns": 8,
   "maxConns": 16,
+  "adaptive": true,
   "minSplit": "8MiB",
   "timeoutSec": 30,
   "stallSec": 12,
@@ -224,11 +227,13 @@ Notes:
 
 **Probe.** The tool sends a `HEAD` request (falling back to `GET` with `Range: bytes=0-0`) to learn the size, whether the server supports ranges, the final URL after redirects (up to 5) and a filename. Every request sends `Accept-Encoding: identity` so that server-side compression cannot shift byte offsets, and `User-Agent: ghpull/<version>`.
 
-**Segmentation.** With ranges supported, the file is split into segments — each fetched as its own `Range` request — up to `min(conns, floor(size / (2 × min-split)))`. A segment that is still larger than twice `--min-split` is split at the midpoint of its *not-yet-downloaded* region, so bytes already on disk stay valid. In the closing phase, when the remaining work drops to `max(2 × min-split, 4MiB)`, the split threshold is lowered to `max(256KiB, min-split / 8)` and the ceiling rises to `--max-conns`, which keeps the last few megabytes from being carried by a single connection.
+**Segmentation.** With ranges supported, the file is split into segments — each fetched as its own `Range` request — up to `min(conns, floor(size / (2 × min-split)))`. Under the default adaptive concurrency the initial plan is a single segment covering the whole file: it is only split once the startup gate (below) asks for a second connection. A segment that is still larger than twice `--min-split` is split at the midpoint of its *not-yet-downloaded* region, so bytes already on disk stay valid. In the closing phase, when the remaining work drops to `max(2 × min-split, 4MiB)`, the split threshold is lowered to `max(256KiB, min-split / 8)`, which keeps the last few megabytes from being carried by a single connection.
 
 **Resume.** Progress lives in `<output>.ghpull/`: `state.json` holds the segment table (offset, end, bytes done) plus the URL and size, and `seg-<start>.part` files hold the payload, named by their starting offset rather than a sequence number because segments get split while running. The state is rewritten atomically (temp file plus rename) every few seconds. On the next run the state is used only if the size still matches and the URL matches the original or the final URL; each part file is re-checked against its expected length, and a truncated or oversized part is discarded and re-fetched. Resume is therefore available at two levels: the parts of an unfinished run, and a finished output file whose size already equals the remote object.
 
-**Watchdog and concurrency.** Every 250 ms the engine checks whether a connection is producing bytes. A segment with no new bytes for `--stall-sec`, or an average below `--lowest-speed` after 10 seconds, is aborted and re-queued; the source that failed is put on a 30-second cooldown and the segment is retried (up to `--retries`, after which the run fails with exit `6`). Throughput is sampled every 6 seconds and the connection target moves by ±2 depending on whether the rate improved by at least 5%, bounded by `1` and `--max-conns`.
+**Watchdog.** Every 250 ms the engine checks whether a connection is producing bytes. A segment with no new bytes for `--stall-sec`, or an average below `--lowest-speed` after 10 seconds, is aborted and re-queued; the source that failed is put on a 30-second cooldown and the segment is retried (up to `--retries`, after which the run fails with exit `6`).
+
+**Adaptive concurrency.** The run starts on one connection and the target is raised one step at a time (1 → 2 → 4 → … → `--conns`) only when the measurement says it pays off: the current step must beat the best step so far by at least 15%, or run below 256 KiB/s (a per-connection throttled link). A step that makes things slower is rolled back, and a single connection already at ≥4 MiB/s is left alone. This is deliberate: on one 66 MB file over a healthy link a single connection reached 11.27 MiB/s while spreading across 8 connections was pinned at 2.06 MiB/s — about **5× slower** — because the server throttles or penalises that many parallel requests; the same 8 connections won by 40× when the single connection was starved (0.02 MiB/s). Concurrency here is insurance, not a speed-up, so the default is to use it only when it is needed. `--no-adaptive` restores the old behaviour: start at `--conns` and nudge the target by ±2 every 6 seconds depending on whether the rate improved by at least 5%.
 
 **Verification and placement.** When all segments are done, the parts are merged in order into `<output>.ghpull-merge` while the SHA-256 digest is computed on the fly (the file is not read a second time). Segment boundaries must be contiguous and cover exactly the announced size. If `--sha256` was given and the digest differs, the merge is discarded, the parts are kept, and the run exits `4`. Otherwise the existing destination is removed, the merged file is renamed into place, and the parts directory is deleted unless `--keep-parts` was given.
 

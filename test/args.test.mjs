@@ -16,7 +16,12 @@ test("最小用法：只有 URL", () => {
   assert.equal(options.mirrorMode, "off");
   assert.equal(options.mirrors.length, 0);
   assert.equal(options.resume, true);
+  assert.equal(options.adaptive, true);
   assert.equal(options.json, false);
+});
+
+test("--no-adaptive 关掉启动闸门", () => {
+  assert.equal(parseCliArgs(["https://e.com/a", "--no-adaptive"]).adaptive, false);
 });
 
 test("尺寸解析：单位与 /s 后缀", () => {

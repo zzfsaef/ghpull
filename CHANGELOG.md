@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Concurrency is adaptive by default: a run now starts on one connection and raises
+  the target one step at a time (`1 → 2 → 4 → … → --conns`) only when the measurement
+  says it pays off — the current step must beat the best step so far by at least 15%,
+  or run below 256 KiB/s. A step that makes things slower is rolled back, and a single
+  connection already at ≥4 MiB/s is left alone. Measured on one 66 MB file over a
+  healthy link, a single connection reached 11.27 MiB/s while spreading across 8
+  connections was pinned at 2.06 MiB/s (~5× slower), whereas the same 8 connections
+  won by 40× when the single connection was starved at 0.02 MiB/s. `--no-adaptive`
+  keeps the previous behaviour (start at `--conns`, then ±2 every 6 seconds).
 - The CI matrix runs on Linux and Windows only. In the first run the three
   `macos-latest` jobs never picked up a runner: GitHub left them queued and then
   cancelled them about 15 minutes later, which flips the whole run's conclusion to

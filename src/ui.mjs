@@ -141,6 +141,18 @@ export function createReporter(options) {
             stderr.write(`分段计划：${event.segments} 段，最小分段 ${formatBytes(event.minSplit)}\n`);
           }
           break;
+        case "ramp":
+          newline();
+          if (options.verbose) {
+            stderr.write(`并发升到 ${event.target} 条（${formatBps(event.bps)}，${event.reason}）\n`);
+          }
+          break;
+        case "ramp-done":
+          newline();
+          if (options.verbose) {
+            stderr.write(`并发定在 ${event.conns} 条（${formatBps(event.bps)}，${event.reason}）\n`);
+          }
+          break;
         case "stall":
           newline();
           stderr.write(`分段 ${event.segment} ${event.reason}，换源重试\n`);
