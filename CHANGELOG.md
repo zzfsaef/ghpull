@@ -149,6 +149,11 @@ First release.
   exited yields no data at all, and the header phase always costs at least one
   polling interval, so the transferred body could come back empty and leave the
   transfer promise waiting forever.
+- `--transport curl`: cancelling also destroys the `PassThrough` that carries the
+  child's body. Killing the child on its own only ends the writable side, so a
+  caller that opened a range and cancelled it without ever consuming the body
+  (`abort()` followed by `finished`) waited forever, while the built-in transport
+  settled as cancelled.
 - A cancelled transfer is reported as cancelled instead of as a network failure:
   the abort signal is wired to the segment abort path, and abort-driven stream
   errors are translated rather than surfaced as `ECONNRESET`/`aborted`.

@@ -98,7 +98,7 @@ export const HELP = `ghpull — 多源分段下载器（零依赖，Node >= 18�
                           auto 额外启用内置的第三方镜像清单
                           （内置清单是第三方公共服务，默认不启用，可用性与合法性自行判断）
       --transport <模式>   auto（默认）/ node / curl
-                          auto 优先内置 fetch，遇到证书错误再降级到 curl
+                          auto 先用内置 HTTP 客户端，遇到证书错误再降级到 curl
       --curl-path <路径>   指定 curl 可执行文件
       --config <文件>      JSON 配置文件，命令行显式给出的选项优先
                           可用的键：conns, maxConns, minSplit, mirrorMode,

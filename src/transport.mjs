@@ -629,6 +629,10 @@ export async function openRange(url, options) {
  *     拒绝并**直接终止进程**（真机表现：reset 或看门狗 abort 后进程猝死，只打一行
  *     `Error: aborted ... code: 'ECONNRESET'`，连重试的机会都没有）；空 catch 不改变
  *     真正 await 它的调用方拿到的结果。
+ *  4. **结算依赖调用方消费 `bytes`**。字节数对账只能边读边数，所以「开了流却完全不读、
+ *     只 await `finished`」会一直 pending（实测两条传输都是）。取数据是调用方的责任，
+ *     引擎总会消费；要提前收场请用 `abort()`（两条传输都会把流销毁并让 `finished` 以
+ *     「已取消」reject）。
  *
  * @param {import("node:http").IncomingMessage|import("node:stream").Readable} source
  * @param {number|null} expected 期望字节数；`null` 表示长度未知，跳过数量校验
@@ -825,6 +829,11 @@ async function openRangeCurl(url, options) {
   const abort = () => {
     aborted = true;
     child.kill();
+    // 必须连 bodyStream 一起销毁，与 node 侧的 `cleanup()` 销毁响应流对称。
+    // PassThrough 的 readable 侧只有在被读取时才会 end/close：调用方开了流却不读、
+    // 直接 abort 再 await finished 时，光 kill 子进程只会触发写侧 'finish'，
+    // `makeBody` 的 end/close/error 全都不触发 ⇒ finished 永久 pending（实测挂死）。
+    bodyStream.destroy();
   };
   const detach = () => options.signal?.removeEventListener("abort", abort);
   options.signal?.addEventListener("abort", abort, { once: true });
