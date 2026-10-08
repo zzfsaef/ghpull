@@ -263,6 +263,10 @@ npx ghpull https://github.com/<owner>/<repo>/releases/download/<tag>/<file> --co
 
 本项目的取舍是：留在「已经装好 Node.js >= 18、`npx ghpull` 立刻可用」的环境里，不落任何原生二进制、不带依赖树，并且只做一件事——用分段请求、可续传状态和摘要校验拉取单个 HTTP(S) 文件。如果你需要 BitTorrent、Metalink、FTP/SFTP、RPC 接口，或者多年积累的协议边界处理，请使用 aria2 或 wget2；如果想要不依赖 Node.js 运行时的下载工具，请使用 axel 或 hget。
 
+### `legacy/` 里的上一代引擎
+
+`ghpull` 从一个单文件下载器长出来（那份代码原先放在工作区的 `scripts/dl.mjs`）。这里保留了它作为**参照实现**和对比用的第二个数据点：[`legacy/dl.mjs`](legacy/dl.mjs)。它靠 `curl.exe` 传输、启动时一次性规划分块，自带 26 条离线自检；它**不在发布包里**，也没有接进 CLI。两者的差异列在 [`legacy/README.md`](legacy/README.md)。
+
 ## 常见问题
 
 **ghpull 会让下载变快吗？**

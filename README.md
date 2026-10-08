@@ -263,6 +263,15 @@ These are mature, widely used multi-protocol downloaders, and this project is no
 
 The trade-off this project makes: it stays inside a Node.js >= 18 environment where `npx ghpull` already works, ships no native binary and no dependency tree, and deliberately does one thing — pull a single HTTP(S) file with segmented requests, resumable state and a digest check. If you need BitTorrent, Metalink, FTP/SFTP, an RPC interface, or years of protocol edge-case handling, use aria2 or wget2 instead; if you want a download accelerator without a Node.js runtime, use axel or hget.
 
+### The predecessor in `legacy/`
+
+`ghpull` grew out of a single-file downloader (`scripts/dl.mjs` in the workspace it was
+written in). That version is kept here as a reference implementation and as a second
+data point for comparisons: [`legacy/dl.mjs`](legacy/dl.mjs). It drives `curl.exe`,
+plans its blocks up front and carries 26 offline self-checks; it is **not** part of the
+published package and is not wired into the CLI. [`legacy/README.md`](legacy/README.md)
+lists the differences.
+
 ## FAQ
 
 **Does ghpull change how fast a download goes?**
